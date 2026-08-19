@@ -2926,20 +2926,38 @@ doc.roundedRect(
     'F'
 );
 
+let pdfLogoAdded =
+    false;
+
 if (pdfLogo) {
 
-    doc.addImage(
-        pdfLogo,
-        'PNG',
-        176,
-        5,
-        18,
-        20
-    );
+    try {
+
+        doc.addImage(
+            pdfLogo,
+            'PNG',
+            176,
+            5,
+            18,
+            20
+        );
+
+        pdfLogoAdded = true;
+
+    }
+
+    catch (error) {
+
+        console.warn(
+            'El escudo no se ha podido insertar en el PDF.',
+            error
+        );
+
+    }
 
 }
 
-else {
+if (!pdfLogoAdded) {
 
     doc.setFont(
         'helvetica',
