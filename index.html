@@ -949,33 +949,16 @@ async function loadWheelStateFromSupabase() {
 }
 
 
-let agents =
-    JSON.parse(localStorage.getItem('rueda_agents')) ||
-    defaultTips.map(tip => ({
-
-        id: tip,
-
-        name: `Agente ${tip}`,
-
-        done: 0,
-
-        swapped: 0,
-
-        skipped: 0
-
-    }));
+let agents = [];
 
 
-let activeAgentIndex =
-    parseInt(localStorage.getItem('rueda_activeIdx')) || 0;
+let activeAgentIndex = 0;
 
 
-let isSkipMode =
-    JSON.parse(localStorage.getItem('rueda_skipMode')) || false;
+let isSkipMode = false;
 
 
-let history =
-    JSON.parse(localStorage.getItem('rueda_history')) || [];
+let history = [];
 
 
 async function saveState() {
@@ -2563,76 +2546,114 @@ async function deleteHistoryEntry(id) {
    REINICIAR
 ========================================================= */
 
-function resetApplication() {
+async function resetApplication() {
 
     const confirmed =
         confirm(
-            '¿Seguro que quieres reiniciar?'
+            '¿Seguro que quieres reiniciar la rueda?'
         );
-
 
     if (!confirmed) {
         return;
     }
 
-
     const confirmedAgain =
         confirm(
-            'Se borrará el historial y se restablecerá la rueda. ¿Continuar?'
+            'Se borrará todo el historial y se pondrán a cero los contadores. Esta acción no se puede deshacer. ¿Continuar?'
         );
-
 
     if (!confirmedAgain) {
         return;
     }
 
+    if (agents.length === 0) {
+        alert(
+            'No hay agentes cargados para reiniciar.'
+        );
+        return;
+    }
 
-    localStorage.removeItem(
-        'rueda_agents'
+    /* ---------------------------------------------------------
+       REINICIAR RUEDA Y CONTADORES EN SUPABASE
+    --------------------------------------------------------- */
+
+    agents.forEach(
+        agent => {
+            agent.done = 0;
+            agent.swapped = 0;
+            agent.skipped = 0;
+        }
     );
-
-    localStorage.removeItem(
-        'rueda_activeIdx'
-    );
-
-    localStorage.removeItem(
-        'rueda_skipMode'
-    );
-
-    localStorage.removeItem(
-        'rueda_history'
-    );
-
-
-    agents =
-        defaultTips.map(tip => ({
-
-            id: tip,
-
-            name: `Agente ${tip}`,
-
-            done: 0,
-
-            swapped: 0,
-
-            skipped: 0
-
-        }));
-
 
     activeAgentIndex = 0;
-
     isSkipMode = false;
+
+    const stateSaved =
+        await saveState();
+
+    if (!stateSaved) {
+
+        alert(
+            'No se pudo reiniciar la rueda en Supabase. El historial no se ha borrado.'
+        );
+
+        await loadAgentsFromSupabase();
+        await loadWheelStateFromSupabase();
+        await loadHistoryFromSupabase();
+        render();
+
+        return;
+    }
+
+    /* ---------------------------------------------------------
+       BORRAR HISTORIAL EN SUPABASE
+    --------------------------------------------------------- */
+
+    const { error: historyError } =
+        await supabaseClient
+            .from('history')
+            .delete()
+            .not(
+                'id',
+                'is',
+                null
+            );
+
+    if (historyError) {
+
+        console.error(
+            'Error reiniciando historial:',
+            historyError
+        );
+
+        alert(
+            'La rueda se ha reiniciado, pero no se pudo borrar el historial.'
+        );
+
+        await loadHistoryFromSupabase();
+        render();
+
+        return;
+    }
+
+    /* ---------------------------------------------------------
+       LA APLICACIÓN YA NO USA DATOS GUARDADOS EN EL NAVEGADOR
+    --------------------------------------------------------- */
+
+    localStorage.removeItem('rueda_agents');
+    localStorage.removeItem('rueda_activeIdx');
+    localStorage.removeItem('rueda_skipMode');
+    localStorage.removeItem('rueda_history');
 
     history = [];
 
-
-    saveState();
-
     render();
 
-}
+    alert(
+        'Rueda e historial reiniciados correctamente.'
+    );
 
+}
 
 /* =========================================================
    EXPORTAR PDF
