@@ -2282,7 +2282,9 @@ async function deleteHistoryEntry(id) {
 
 
     const item =
-        history[index];
+        normalizeHistoryRecord(
+            history[index]
+        );
 
 
     /* ---------------------------------------------------------
@@ -2392,9 +2394,11 @@ async function deleteHistoryEntry(id) {
 
     const previousItem =
         history.length > 1
-            ? history[
-                history.length - 2
-            ]
+            ? normalizeHistoryRecord(
+                history[
+                    history.length - 2
+                ]
+            )
             : null;
 
 
