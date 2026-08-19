@@ -809,9 +809,82 @@ async function loadHistoryFromSupabase() {
         return false;
     }
 
-    history = data || [];
+    history =
+        (data || []).map(normalizeHistoryRecord);
 
     return true;
+}
+
+function normalizeHistoryRecord(record) {
+
+    const source =
+        record || {};
+
+    return {
+
+        ...source,
+
+        id:
+            source.id,
+
+        service_date:
+            source.service_date ??
+            source.date ??
+            '',
+
+        service_time:
+            source.service_time ??
+            source.serviceTime ??
+            '',
+
+        shift:
+            source.shift ??
+            '',
+
+        assigned_tip:
+            source.assigned_tip ??
+            source.assignedTip ??
+            '—',
+
+        assigned_name:
+            source.assigned_name ??
+            source.assignedName ??
+            '',
+
+        worker_tip:
+            source.worker_tip ??
+            source.workerTip ??
+            null,
+
+        worker_name:
+            source.worker_name ??
+            source.workerName ??
+            '',
+
+        reason:
+            source.reason ??
+            '',
+
+        status:
+            source.status ??
+            '—',
+
+        notice_type:
+            source.notice_type ??
+            source.noticeType ??
+            '—',
+
+        notes:
+            source.notes ??
+            '',
+
+        notice_datetime:
+            source.notice_datetime ??
+            source.noticeDatetime ??
+            ''
+
+    };
+
 }
 
 async function loadWheelStateFromSupabase() {
@@ -977,20 +1050,24 @@ async function saveState() {
 
 async function saveHistoryRecord(record) {
 
+    const normalizedRecord =
+        normalizeHistoryRecord(record);
+
     const assignedAgent =
         agents.find(
             agent =>
                 agent.id ===
-                record.assignedTip
+                normalizedRecord.assigned_tip
         );
 
     const workerAgent =
-        record.workerTip === '—'
+        normalizedRecord.worker_tip === '—' ||
+        !normalizedRecord.worker_tip
             ? null
             : agents.find(
                 agent =>
                     agent.id ===
-                    record.workerTip
+                    normalizedRecord.worker_tip
             );
 
 
@@ -999,49 +1076,50 @@ async function saveHistoryRecord(record) {
             .from('history')
             .insert({
 
-		id: Date.now(),
+                id:
+                    normalizedRecord.id,
 
                 service_date:
-                    record.date,
+                    normalizedRecord.service_date,
 
                 service_time:
-                    record.serviceTime,
+                    normalizedRecord.service_time,
 
                 shift:
-                    record.shift,
+                    normalizedRecord.shift,
 
                 assigned_agent_id:
                     assignedAgent?.supabaseId ?? null,
 
                 assigned_tip:
-                    record.assignedTip,
+                    normalizedRecord.assigned_tip,
 
                 assigned_name:
-                    record.assignedName,
+                    normalizedRecord.assigned_name,
 
                 worker_agent_id:
                     workerAgent?.supabaseId ?? null,
 
                 worker_tip:
-                    record.workerTip,
+                    normalizedRecord.worker_tip,
 
                 worker_name:
-                    record.workerName,
+                    normalizedRecord.worker_name,
 
                 reason:
-                    record.reason,
+                    normalizedRecord.reason,
 
                 status:
-                    record.status,
+                    normalizedRecord.status,
 
                 notice_type:
-                    record.noticeType,
+                    normalizedRecord.notice_type,
 
                 notes:
-                    record.notes,
+                    normalizedRecord.notes,
 
                 notice_datetime:
-                    record.noticeDatetime
+                    normalizedRecord.notice_datetime
 
             });
 
@@ -1059,7 +1137,6 @@ async function saveHistoryRecord(record) {
 
     return true;
 }
-
 
 /* =========================================================
    FECHA ACTUAL
@@ -1591,7 +1668,8 @@ if (history.length === 0) {
 const sortedHistory =
     history
         .slice()
-        .reverse();
+        .reverse()
+        .map(normalizeHistoryRecord);
 
 
 sortedHistory.forEach(item => {
@@ -1750,9 +1828,14 @@ sortedHistory.forEach(item => {
    FORMATO FECHA
 ========================================================= */
 
-function formatDate(dateString) {
+function formatDate(dateValue) {
 
-    if (!dateString) return '';
+    if (!dateValue) {
+        return 'Fecha no indicada';
+    }
+
+    const dateString =
+        String(dateValue).slice(0, 10);
 
     const parts =
         dateString.split('-');
@@ -1764,7 +1847,6 @@ function formatDate(dateString) {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
 
 }
-
 
 /* =========================================================
    TURNO CORTO
