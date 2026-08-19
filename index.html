@@ -1,0 +1,3373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>Rueda Policía Local de Villava-Atarrabia</title>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- AutoTable -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        input,
+        select,
+        textarea,
+        button {
+            touch-action: manipulation;
+        }
+
+        body {
+            padding-bottom: 30px;
+        }
+
+        .safe-area-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+    </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+  const SUPABASE_URL = 'https://vetmnjtnaireheplmgls.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_QCEpa9_TeNFdcalUEo1RUA_Frky8DRE';
+
+  const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
+
+async function probarLogin() {
+  const email = prompt('Email del administrador:');
+  const password = prompt('Contraseña:');
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  console.log('LOGIN:', { data, error });
+}
+
+async function loginApplication() {
+
+    const email =
+        document.getElementById('login-email').value.trim();
+
+    const password =
+        document.getElementById('login-password').value;
+
+    if (!email || !password) {
+
+        alert(
+            'Introduce usuario y contraseña.'
+        );
+
+        return;
+    }
+
+    const { error } =
+        await supabaseClient.auth.signInWithPassword({
+
+            email: email,
+
+            password: password
+
+        });
+
+    if (error) {
+
+        console.error(
+            'Error de autenticación:',
+            error
+        );
+
+        alert(
+            'Usuario o contraseña incorrectos.'
+        );
+
+        return;
+    }
+
+    document.getElementById(
+        'login-screen'
+    ).style.display = 'none';
+
+    document.getElementById(
+        'app-content'
+    ).style.display = 'block';
+
+    const agentsLoaded =
+        await loadAgentsFromSupabase();
+
+    if (!agentsLoaded) {
+
+        console.error(
+            'No se pudieron cargar los agentes desde Supabase.'
+        );
+
+        return;
+    }
+
+
+    const stateLoaded =
+        await loadWheelStateFromSupabase();
+
+    if (!stateLoaded) {
+
+        console.error(
+            'No se pudo cargar wheel_state desde Supabase.'
+        );
+
+        return;
+    }
+
+
+    const historyLoaded =
+        await loadHistoryFromSupabase();
+
+    if (!historyLoaded) {
+
+        console.error(
+            'No se pudo cargar history desde Supabase.'
+        );
+
+        return;
+    }
+
+
+    render();
+
+}
+
+
+
+</script>
+
+
+</head>
+
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen">
+
+
+<div
+    id="login-screen"
+    style="
+        display: none;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        background: #f3f4f6;
+    "
+>
+
+    <div
+        style="
+            width: 100%;
+            max-width: 400px;
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.15);
+        "
+    >
+
+        <h1 style="margin-bottom: 24px;">
+            Rueda de Agentes
+        </h1>
+
+        <form
+            id="login-form"
+            onsubmit="event.preventDefault(); loginApplication();"
+        >
+
+            <label>
+                Usuario
+            </label>
+
+            <input
+                id="login-email"
+                type="email"
+                autocomplete="username"
+                required
+                style="
+                    width: 100%;
+                    margin: 8px 0 16px;
+                    padding: 10px;
+                "
+            >
+
+            <label>
+                Contraseña
+            </label>
+
+            <input
+                id="login-password"
+                type="password"
+                autocomplete="current-password"
+                required
+                style="
+                    width: 100%;
+                    margin: 8px 0 20px;
+                    padding: 10px;
+                "
+            >
+
+            <button
+                type="submit"
+                style="
+                    width: 100%;
+                    padding: 12px;
+                    cursor: pointer;
+                "
+            >
+                Entrar
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     CABECERA
+========================================================= -->
+
+<div id="app-content" style="display: none;">
+
+<header class="bg-slate-900 text-white border-b-4 border-amber-500 sticky top-0 z-50 shadow-md">
+
+    <div class="px-4 py-3">
+
+        <div class="flex items-center justify-between">
+
+            <div class="flex items-center gap-3">
+
+              <div class="w-16 h-16 flex items-center justify-center overflow-hidden">
+    <img
+        src="https://www.villava.es/wp-content/uploads/2026/04/EscudoPMVA.png"
+        alt="Policía Municipal de Villava-Atarrabia"
+        class="w-full h-full object-contain">
+</div>
+
+                <div>
+                    <h1 class="font-bold text-base leading-tight">
+                        POLICÍA LOCAL DE VILLAVA-ATARRABIA
+                    </h1>
+
+                    <p class="text-[12px] text-amber-400 font-medium">
+                        Gestión de rueda para cubrir turnos
+                    </p>
+                </div>
+
+            </div>
+
+            <button
+                onclick="exportToPDF()"
+                class="bg-amber-500 text-slate-900 font-bold rounded-lg px-3 py-2 shadow active:scale-95 transition">
+
+                <i class="fa-solid fa-file-pdf"></i>
+
+            </button>
+
+        </div>
+
+        <div class="mt-2 text-right text-[10px] text-slate-400">
+            <span id="current-date"></span>
+            <span class="mx-1">•</span>
+            Jefatura
+        </div>
+
+    </div>
+
+</header>
+
+
+<!-- =========================================================
+     CONTENIDO PRINCIPAL
+========================================================= -->
+
+<main class="w-full px-3 py-4 space-y-4">
+
+
+<!-- =========================================================
+     PRÓXIMO AGENTE
+========================================================= -->
+
+<section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+
+    <div class="flex items-center justify-between mb-3">
+
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <i class="fa-solid fa-user-check text-emerald-500 mr-2"></i>
+            Próximo llamamiento
+        </h2>
+
+    </div>
+
+
+    <div
+        id="active-agent-card"
+        class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+
+        <div class="flex items-center justify-between">
+
+            <div>
+
+                <div class="flex items-center gap-2 mb-1">
+
+                    <span
+                        id="next-tip"
+                        class="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg">
+                        C-8
+                    </span>
+
+                    <span
+                        id="next-pos-text"
+                        class="text-[11px] font-semibold text-emerald-800">
+                        Puesto 1
+                    </span>
+
+                </div>
+
+                <h3
+                    id="next-name"
+                    class="text-lg font-bold text-slate-800">
+                    Agente C-8
+                </h3>
+
+            </div>
+
+            <i
+                id="next-icon"
+                class="fa-solid fa-circle-arrow-right text-3xl text-emerald-600">
+            </i>
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="skip-alert"
+        class="hidden mt-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs p-3 rounded-xl">
+
+        <i class="fa-solid fa-circle-info text-blue-600 mr-1"></i>
+
+        <strong>Modo Salto:</strong>
+        el agente que ha quedado en posición 1 conserva su puesto tras la asignación.
+
+    </div>
+
+</section>
+
+
+
+<!-- =========================================================
+     FORMULARIO
+========================================================= -->
+
+<section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+
+    <div class="flex items-center gap-2 mb-4 pb-3 border-b">
+
+        <i class="fa-solid fa-square-plus text-amber-500"></i>
+
+        <h2 class="text-sm font-bold uppercase tracking-wider">
+            Asignar servicio / aviso
+        </h2>
+
+    </div>
+
+
+    <form id="call-form" class="space-y-4">
+
+
+        <!-- FECHA -->
+
+        <div>
+
+            <label class="block text-xs font-bold text-slate-600 mb-1.5">
+                Fecha del servicio
+            </label>
+
+            <input
+                type="date"
+                id="service-date"
+                required
+                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-amber-500 outline-none">
+
+        </div>
+
+
+        <!-- TURNO -->
+
+        <div>
+
+            <label class="block text-xs font-bold text-slate-600 mb-1.5">
+                Turno a cubrir
+            </label>
+
+            <select
+                id="service-shift"
+                required
+                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+
+                <option value="Turno 1 (05:45 - 13:45)">
+                    Turno 1 (05:45 - 13:45)
+                </option>
+
+                <option value="Turno 2 (13:45 - 21:45)">
+                    Turno 2 (13:45 - 21:45)
+                </option>
+
+                <option value="Turno 3 (21:45 - 05:45)">
+                    Turno 3 (21:45 - 05:45)
+                </option>
+
+            </select>
+
+        </div>
+
+
+        <!-- AVISO -->
+
+        <div>
+
+            <label class="block text-xs font-bold text-slate-600 mb-1.5">
+                Fecha y hora del aviso
+            </label>
+
+            <input
+                type="datetime-local"
+                id="notice-datetime"
+                required
+                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-amber-50 focus:ring-2 focus:ring-amber-500 outline-none">
+
+            <p class="text-[10px] text-slate-500 mt-1">
+                La aplicación calculará automáticamente si el aviso fue
+                <strong>+48 h</strong> o <strong>-48 h</strong>.
+            </p>
+
+        </div>
+
+
+        <!-- MOTIVO -->
+
+        <div>
+
+            <label class="block text-xs font-bold text-slate-600 mb-1.5">
+                Motivo de la vacante
+            </label>
+
+            <input
+                type="text"
+                id="service-reason"
+                required
+                placeholder="Ej. Baja médica / Licencia..."
+                class="w-full text-sm border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-amber-500 outline-none">
+
+        </div>
+
+
+        <!-- ACTUACIÓN -->
+
+        <div>
+
+            <label class="block text-xs font-bold text-slate-600 mb-1.5">
+                Actuación del agente llamado
+            </label>
+
+            <select
+                id="service-status"
+                onchange="toggleSwapAgentField()"
+                required
+                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+
+                <option value="Realizado">
+                    Realiza el servicio
+                </option>
+
+                <option value="Salto Justificado">
+                    Salto justificado
+                </option>
+
+                <option value="Cedido">
+                    Cede el servicio a otro agente
+                </option>
+
+            </select>
+
+        </div>
+
+
+        <!-- AGENTE AL QUE CEDE -->
+
+        <div
+            id="swap-agent-container"
+            class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3">
+
+            <label class="block text-xs font-bold text-amber-800 mb-1.5">
+                Agente que realiza finalmente el turno
+            </label>
+
+            <select
+                id="swap-agent"
+                class="w-full text-sm border border-amber-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+            </select>
+
+        </div>
+
+
+        <!-- OBSERVACIONES -->
+
+        <div>
+
+            <label class="block text-xs font-bold text-slate-600 mb-1.5">
+                Observaciones
+            </label>
+
+            <textarea
+                id="service-notes"
+                rows="2"
+                placeholder="Ej. Notificado por WhatsApp..."
+                class="w-full text-sm border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-amber-500 outline-none">
+            </textarea>
+
+        </div>
+
+
+        <!-- BOTÓN -->
+
+        <button
+            type="submit"
+            class="w-full bg-slate-900 text-white font-bold py-3.5 px-4 rounded-xl shadow active:scale-[0.98] transition flex items-center justify-center gap-2">
+
+            <i class="fa-solid fa-floppy-disk text-amber-400"></i>
+
+            <span>
+                GUARDAR
+            </span>
+
+        </button>
+
+    </form>
+
+</section>
+
+
+
+<!-- =========================================================
+     HISTORIAL 
+========================================================= -->
+
+<section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+
+
+    <div class="flex items-center justify-between mb-3 pb-3 border-b">
+
+        <h2 class="text-xs font-bold uppercase tracking-wider">
+
+            <i class="fa-solid fa-list-check text-slate-600 mr-2"></i>
+
+            Historial
+
+        </h2>
+
+        <span
+            id="total-records-count"
+            class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full">
+            0 Registros
+        </span>
+
+    </div>
+
+
+    <div
+        id="history-mobile-list"
+        class="space-y-3">
+    </div>
+
+
+    <div
+        id="history-empty"
+        class="text-center py-8 text-slate-400 text-xs">
+
+        <i class="fa-solid fa-inbox text-2xl mb-2"></i>
+
+        <p>
+            Todavía no hay registros.
+        </p>
+
+    </div>
+
+</section>
+
+
+
+<!-- =========================================================
+     GESTIÓN DE AGENTES PLEGABLE
+========================================================= -->
+
+<section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+
+    <button
+        onclick="toggleAgentsPanel()"
+        class="w-full p-4 flex items-center justify-between text-left">
+
+        <div class="flex items-center gap-2">
+
+            <i class="fa-solid fa-users text-slate-600"></i>
+
+            <div>
+
+                <h2 class="text-sm font-bold uppercase tracking-wider">
+                    Gestión de agentes
+                </h2>
+
+                <p class="text-[10px] text-slate-400 mt-0.5">
+                    Editar nombres o eliminar agentes
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div
+            id="agents-toggle-icon"
+            class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+
+            <i class="fa-solid fa-plus text-slate-600"></i>
+
+        </div>
+
+    </button>
+
+
+    <div
+        id="agents-panel"
+        class="hidden border-t border-slate-200 p-3">
+
+        <div
+            id="wheel-mobile-list"
+            class="space-y-2">
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- =========================================================
+     REINICIAR
+========================================================= -->
+
+<section class="pt-1">
+
+    <button
+        onclick="resetApplication()"
+        class="w-full bg-red-50 border border-red-200 text-red-700 font-bold py-3 rounded-xl text-sm active:bg-red-100 transition">
+
+        <i class="fa-solid fa-rotate-right mr-2"></i>
+
+        REINICIAR RUEDA
+
+    </button>
+
+</section>
+
+
+</main>
+
+</div>
+
+<!-- =========================================================
+     JAVASCRIPT
+========================================================= -->
+
+<script>
+
+/* =========================================================
+   CONFIGURACIÓN INICIAL
+========================================================= */
+
+const defaultTips = [
+
+    'C-8',
+    'C-14',
+    'A-16',
+    'A-18',
+    'A-19',
+    'C-22',
+    'A-23',
+    'A-27',
+    'A-29',
+    'A-30',
+    'A-32',
+    'A-33',
+    'A-34',
+    'A-35',
+    'A-37',
+    'A-38',
+    'A-39'
+
+];
+
+
+/* =========================================================
+   CARGAR DATOS
+========================================================= */
+
+
+async function loadAgentsFromSupabase() {
+
+    const { data, error } =
+        await supabaseClient
+            .from('agents')
+            .select('*')
+            .order('position', { ascending: true });
+
+    if (error) {
+
+        console.error(
+            'Error cargando agentes desde Supabase:',
+            error
+        );
+
+        return false;
+    }
+
+    if (!data || data.length === 0) {
+
+        console.error(
+            'Supabase no devolvió ningún agente.'
+        );
+
+        return false;
+    }
+
+    agents = data.map(agent => ({
+
+        id: agent.tip,
+
+	supabaseId: agent.id,
+
+        name: agent.name,
+
+        done: agent.done ?? 0,
+
+        swapped: agent.swapped ?? 0,
+
+        skipped: agent.skipped ?? 0,
+
+        active: agent.active ?? true
+
+    }));
+
+    return true;
+}
+
+/* =========================================================
+   CARGAR HISTORIAL
+========================================================= */
+
+async function loadHistoryFromSupabase() {
+
+    const { data, error } =
+    await supabaseClient
+        .from('history')
+        .select('*')
+        .order('id', {
+            ascending: true
+        });
+
+    if (error) {
+
+        console.error(
+            'Error cargando historial desde Supabase:',
+            error
+        );
+
+        return false;
+    }
+
+    history = data || [];
+
+    return true;
+}
+
+async function loadWheelStateFromSupabase() {
+
+    const { data, error } =
+        await supabaseClient
+            .from('wheel_state')
+            .select('active_agent_id, is_skip_mode')
+            .eq('id', 1)
+            .single();
+
+    if (error) {
+
+        console.error(
+            'Error cargando wheel_state:',
+            error
+        );
+
+        return false;
+    }
+
+    const activeAgent =
+        agents.find(
+            agent =>
+                agent.supabaseId ===
+                data.active_agent_id
+        );
+
+    if (!activeAgent) {
+
+        console.error(
+            'El agente activo de wheel_state no existe en agents.'
+        );
+
+        return false;
+    }
+
+    activeAgentIndex =
+        agents.indexOf(activeAgent);
+
+    isSkipMode =
+        data.is_skip_mode ?? false;
+
+    return true;
+}
+
+
+let agents =
+    JSON.parse(localStorage.getItem('rueda_agents')) ||
+    defaultTips.map(tip => ({
+
+        id: tip,
+
+        name: `Agente ${tip}`,
+
+        done: 0,
+
+        swapped: 0,
+
+        skipped: 0
+
+    }));
+
+
+let activeAgentIndex =
+    parseInt(localStorage.getItem('rueda_activeIdx')) || 0;
+
+
+let isSkipMode =
+    JSON.parse(localStorage.getItem('rueda_skipMode')) || false;
+
+
+let history =
+    JSON.parse(localStorage.getItem('rueda_history')) || [];
+
+
+async function saveState() {
+
+    /* ---------------------------------------------------------
+       GUARDAR AGENTES
+    --------------------------------------------------------- */
+
+    for (const agent of agents) {
+
+        const { error } =
+            await supabaseClient
+                .from('agents')
+                .update({
+
+                    done: agent.done,
+
+                    swapped: agent.swapped,
+
+                    skipped: agent.skipped,
+
+                    active: agent.active ?? true
+
+                })
+                .eq('id', agent.supabaseId);
+
+        if (error) {
+
+            console.error(
+                'Error guardando agente:',
+                agent.id,
+                error
+            );
+
+            return false;
+        }
+    }
+
+
+    /* ---------------------------------------------------------
+       GUARDAR ESTADO DE LA RUEDA
+    --------------------------------------------------------- */
+
+    const activeAgent =
+        agents[activeAgentIndex];
+
+    if (!activeAgent) {
+
+        console.error(
+            'No existe agente activo para guardar.'
+        );
+
+        return false;
+    }
+
+
+    const { error: wheelError } =
+        await supabaseClient
+            .from('wheel_state')
+            .update({
+
+                active_agent_id:
+                    activeAgent.supabaseId,
+
+                is_skip_mode:
+                    isSkipMode,
+
+                updated_at:
+                    new Date().toISOString()
+
+            })
+            .eq('id', 1);
+
+
+    if (wheelError) {
+
+        console.error(
+            'Error guardando wheel_state:',
+            wheelError
+        );
+
+        return false;
+    }
+
+
+    return true;
+}
+
+
+async function saveHistoryRecord(record) {
+
+    const assignedAgent =
+        agents.find(
+            agent =>
+                agent.id ===
+                record.assignedTip
+        );
+
+    const workerAgent =
+        record.workerTip === '—'
+            ? null
+            : agents.find(
+                agent =>
+                    agent.id ===
+                    record.workerTip
+            );
+
+
+    const { error } =
+        await supabaseClient
+            .from('history')
+            .insert({
+
+		id: Date.now(),
+
+                service_date:
+                    record.date,
+
+                service_time:
+                    record.serviceTime,
+
+                shift:
+                    record.shift,
+
+                assigned_agent_id:
+                    assignedAgent?.supabaseId ?? null,
+
+                assigned_tip:
+                    record.assignedTip,
+
+                assigned_name:
+                    record.assignedName,
+
+                worker_agent_id:
+                    workerAgent?.supabaseId ?? null,
+
+                worker_tip:
+                    record.workerTip,
+
+                worker_name:
+                    record.workerName,
+
+                reason:
+                    record.reason,
+
+                status:
+                    record.status,
+
+                notice_type:
+                    record.noticeType,
+
+                notes:
+                    record.notes,
+
+                notice_datetime:
+                    record.noticeDatetime
+
+            });
+
+
+    if (error) {
+
+        console.error(
+            'Error guardando historial:',
+            error
+        );
+
+        return false;
+    }
+
+
+    return true;
+}
+
+
+/* =========================================================
+   FECHA ACTUAL
+========================================================= */
+
+document.getElementById('current-date').innerText =
+    new Date().toLocaleDateString(
+        'es-ES',
+        {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short'
+        }
+    );
+
+
+document.getElementById('service-date').valueAsDate =
+    new Date();
+
+
+/* =========================================================
+   FECHA/HORA AVISO
+========================================================= */
+
+function setNowNoticeDatetime() {
+
+    const now = new Date();
+
+    now.setMinutes(
+        now.getMinutes() -
+        now.getTimezoneOffset()
+    );
+
+    document.getElementById('notice-datetime').value =
+        now.toISOString().slice(0, 16);
+
+}
+
+setNowNoticeDatetime();
+
+
+/* =========================================================
+   PANEL AGENTES
+========================================================= */
+
+function toggleAgentsPanel() {
+
+    const panel =
+        document.getElementById('agents-panel');
+
+    const icon =
+        document.getElementById('agents-toggle-icon');
+
+    if (panel.classList.contains('hidden')) {
+
+        panel.classList.remove('hidden');
+
+        icon.innerHTML =
+            '<i class="fa-solid fa-minus text-slate-600"></i>';
+
+    } else {
+
+        panel.classList.add('hidden');
+
+        icon.innerHTML =
+            '<i class="fa-solid fa-plus text-slate-600"></i>';
+
+    }
+
+}
+
+
+/* =========================================================
+   MOSTRAR AGENTE DE CESIÓN
+========================================================= */
+
+function toggleSwapAgentField() {
+
+    const status =
+        document.getElementById('service-status').value;
+
+    const container =
+        document.getElementById('swap-agent-container');
+
+    if (status === 'Cedido') {
+
+        container.classList.remove('hidden');
+
+    } else {
+
+        container.classList.add('hidden');
+
+    }
+
+}
+
+
+/* =========================================================
+   CALCULAR ANTELACIÓN
+========================================================= */
+
+function calculateNoticeTypeExact(
+    serviceDateStr,
+    shiftStr,
+    noticeDateTimeStr
+) {
+
+    let startHour = 5;
+    let startMinute = 45;
+
+    if (shiftStr.includes('Turno 2')) {
+
+        startHour = 13;
+        startMinute = 45;
+
+    }
+
+    else if (shiftStr.includes('Turno 3')) {
+
+        startHour = 21;
+        startMinute = 45;
+
+    }
+
+
+    const serviceStart =
+        new Date(
+            serviceDateStr + 'T00:00:00'
+        );
+
+
+    serviceStart.setHours(
+        startHour,
+        startMinute,
+        0,
+        0
+    );
+
+
+    /*
+       Para Turno 3, la hora 21:45 pertenece
+       a la fecha indicada.
+    */
+
+
+    const noticeTime =
+        new Date(noticeDateTimeStr);
+
+
+    const diffMs =
+        serviceStart - noticeTime;
+
+
+    const diffHours =
+        diffMs / (1000 * 60 * 60);
+
+
+    return diffHours >= 48
+        ? '+48 h'
+        : '-48 h';
+
+}
+
+
+/* =========================================================
+   EDITAR NOMBRE
+========================================================= */
+
+function editAgentName(tip) {
+
+    const agent =
+        agents.find(a => a.id === tip);
+
+    if (!agent) return;
+
+
+    const newName =
+        prompt(
+            `Modificar nombre para el agente ${tip}:`,
+            agent.name
+        );
+
+
+    if (
+        newName !== null &&
+        newName.trim() !== ''
+    ) {
+
+        agent.name =
+            newName.trim();
+
+        saveState();
+
+        render();
+
+    }
+
+}
+
+
+/* =========================================================
+   ELIMINAR AGENTE
+========================================================= */
+
+function removeAgent(tip) {
+
+    if (agents.length <= 1) {
+
+        alert(
+            'No se puede dejar la rueda vacía.'
+        );
+
+        return;
+
+    }
+
+
+    const agent =
+        agents.find(a => a.id === tip);
+
+
+    if (!agent) return;
+
+
+    const confirmed =
+        confirm(
+            `¿Seguro que quieres eliminar al agente ${tip} de la rueda?`
+        );
+
+
+    if (!confirmed) return;
+
+
+    const index =
+        agents.findIndex(
+            a => a.id === tip
+        );
+
+
+    if (index !== -1) {
+
+        agents.splice(index, 1);
+
+
+        if (
+            activeAgentIndex >=
+            agents.length
+        ) {
+
+            activeAgentIndex = 0;
+
+        }
+
+
+        saveState();
+
+        render();
+
+    }
+
+}
+
+
+/* =========================================================
+   RENDER PRINCIPAL
+========================================================= */
+
+function render() {
+
+    if (agents.length === 0) {
+
+        return;
+
+    }
+
+
+    if (
+        activeAgentIndex >=
+        agents.length
+    ) {
+
+        activeAgentIndex = 0;
+
+    }
+
+
+    const activeAgent =
+        agents[activeAgentIndex];
+
+
+    /* -------------------------------------------------------
+       PRÓXIMO AGENTE
+    ------------------------------------------------------- */
+
+    document.getElementById('next-tip').innerText =
+        activeAgent.id;
+
+
+    document.getElementById('next-name').innerText =
+        activeAgent.name;
+
+
+    document.getElementById('next-pos-text').innerText =
+        isSkipMode
+            ? `Puesto ${activeAgentIndex + 1} — Salto`
+            : 'Puesto 1';
+
+
+    const card =
+        document.getElementById('active-agent-card');
+
+
+    const skipAlert =
+        document.getElementById('skip-alert');
+
+
+    if (isSkipMode) {
+
+        card.className =
+            'bg-blue-50 border border-blue-200 rounded-xl p-4';
+
+
+        skipAlert.classList.remove('hidden');
+
+    } else {
+
+        card.className =
+            'bg-emerald-50 border border-emerald-200 rounded-xl p-4';
+
+
+        skipAlert.classList.add('hidden');
+
+    }
+
+
+    /* -------------------------------------------------------
+       SELECT CESIÓN
+    ------------------------------------------------------- */
+
+    const swapSelect =
+        document.getElementById('swap-agent');
+
+
+    swapSelect.innerHTML = '';
+
+
+    agents
+        .filter(
+            (_, index) =>
+                index !== activeAgentIndex
+        )
+        .forEach(agent => {
+
+            const option =
+                document.createElement('option');
+
+            option.value =
+                agent.id;
+
+            option.textContent =
+                `${agent.id} — ${agent.name}`;
+
+            swapSelect.appendChild(option);
+
+        });
+
+
+    /* -------------------------------------------------------
+       LISTADO DE AGENTES
+    ------------------------------------------------------- */
+
+    const wheelMobileList =
+        document.getElementById(
+            'wheel-mobile-list'
+        );
+
+
+    wheelMobileList.innerHTML = '';
+
+
+    agents.forEach(
+        (agent, index) => {
+
+            const isCurrent =
+                index === activeAgentIndex;
+
+
+            const card =
+                document.createElement('div');
+
+
+            card.className =
+                `p-3 rounded-xl border flex items-center justify-between ${
+                    isCurrent
+                    ? isSkipMode
+                        ? 'bg-blue-50 border-blue-300'
+                        : 'bg-amber-50 border-amber-300'
+                    : 'bg-slate-50 border-slate-200'
+                }`;
+
+
+            card.innerHTML = `
+
+                <div class="flex items-center gap-3">
+
+                    <span
+                        class="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
+                            isCurrent
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }">
+
+                        ${index + 1}
+
+                    </span>
+
+                    <div>
+
+                        <div class="font-bold text-sm">
+
+                            ${agent.id}
+
+                        </div>
+
+                        <div class="text-[11px] text-slate-500">
+
+                            ${agent.name}
+
+                        </div>
+
+                        <div class="flex gap-2 mt-1 text-[10px]">
+
+                            <span class="text-emerald-700 font-bold">
+                                R: ${agent.done}
+                            </span>
+
+                            <span class="text-amber-700 font-bold">
+                                C: ${agent.swapped}
+                            </span>
+
+                            <span class="text-blue-700 font-bold">
+                                S: ${agent.skipped}
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="flex items-center gap-1">
+
+                    <button
+                        onclick="editAgentName('${agent.id}')"
+                        class="p-2 text-slate-400 hover:text-blue-600">
+
+                        <i class="fa-solid fa-pen-to-square"></i>
+
+                    </button>
+
+
+                    <button
+                        onclick="removeAgent('${agent.id}')"
+                        class="p-2 text-slate-400 hover:text-red-600">
+
+                        <i class="fa-solid fa-user-xmark"></i>
+
+                    </button>
+
+                </div>
+
+            `;
+
+
+            wheelMobileList.appendChild(card);
+
+        }
+    );
+
+
+   /* -------------------------------------------------------
+   HISTORIAL
+------------------------------------------------------- */
+
+const historyList =
+    document.getElementById(
+        'history-mobile-list'
+    );
+
+
+const empty =
+    document.getElementById(
+        'history-empty'
+    );
+
+
+historyList.innerHTML = '';
+
+
+document.getElementById(
+    'total-records-count'
+).innerText =
+    `${history.length} Registro${history.length === 1 ? '' : 's'}`;
+
+
+if (history.length === 0) {
+
+    empty.classList.remove('hidden');
+
+} else {
+
+    empty.classList.add('hidden');
+
+}
+
+
+/* -------------------------------------------------------
+   ORDEN DEL HISTORIAL
+
+   El historial se muestra en el orden real
+   en que se registraron los movimientos.
+
+   El último movimiento registrado aparece primero.
+
+   La fecha del servicio NO modifica el orden.
+------------------------------------------------------- */
+
+const sortedHistory =
+    history
+        .slice()
+        .reverse();
+
+
+sortedHistory.forEach(item => {
+
+    let badgeClass =
+        'bg-emerald-100 text-emerald-800';
+
+
+    if (
+        item.status === 'Cedido'
+    ) {
+
+        badgeClass =
+            'bg-amber-100 text-amber-800';
+
+    }
+
+
+    if (
+        item.status ===
+        'Salto Justificado'
+    ) {
+
+        badgeClass =
+            'bg-blue-100 text-blue-800';
+
+    }
+
+
+    const noticeClass =
+        item.notice_type === '+48 h'
+            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+            : 'bg-rose-100 text-rose-800 border border-rose-300';
+
+
+    const card =
+        document.createElement('div');
+
+
+    card.className =
+        'border border-slate-200 rounded-xl p-3 bg-white shadow-sm';
+
+
+    card.innerHTML = `
+
+        <div class="flex items-start justify-between gap-3">
+
+            <div>
+
+                <div class="font-bold text-slate-800">
+
+                    ${formatDate(item.service_date)}
+
+                </div>
+
+
+                <div class="text-[11px] text-slate-500 mt-0.5">
+
+                    ${getShortShift(item.shift)}
+
+                </div>
+
+            </div>
+
+
+            <span
+                class="px-2 py-1 rounded-lg text-[10px] font-bold ${badgeClass}">
+
+                ${item.status}
+
+            </span>
+
+        </div>
+
+
+        <div class="mt-3 space-y-1.5 text-xs">
+
+            <div class="flex justify-between gap-2">
+
+                <span class="text-slate-500">
+                    Agente llamado
+                </span>
+
+                <strong>
+                    ${item.assigned_tip}
+                </strong>
+
+            </div>
+
+
+            <div class="flex justify-between gap-2">
+
+                <span class="text-slate-500">
+                    Realiza
+                </span>
+
+                <strong>
+                    ${item.worker_tip || '—'}
+                </strong>
+
+            </div>
+
+
+            <div class="flex justify-between gap-2">
+
+                <span class="text-slate-500">
+                    Motivo
+                </span>
+
+                <span
+                    class="font-medium text-right max-w-[60%]">
+
+                    ${escapeHtml(item.reason)}
+
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div class="mt-3 pt-2 border-t flex items-center justify-between">
+
+            <span
+                class="px-2 py-1 rounded-lg text-[10px] font-bold ${noticeClass}">
+
+                ${item.notice_type}
+
+            </span>
+
+
+            <button
+                onclick="deleteHistoryEntry(${item.id})"
+                class="text-slate-400 hover:text-red-600 text-xs p-1">
+
+                <i class="fa-solid fa-trash-can mr-1"></i>
+
+                Borrar
+
+            </button>
+
+        </div>
+
+    `;
+
+
+   historyList.appendChild(card);
+
+});
+
+}
+
+
+
+/* =========================================================
+   FORMATO FECHA
+========================================================= */
+
+function formatDate(dateString) {
+
+    if (!dateString) return '';
+
+    const parts =
+        dateString.split('-');
+
+    if (parts.length !== 3) {
+        return dateString;
+    }
+
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+
+}
+
+
+/* =========================================================
+   TURNO CORTO
+========================================================= */
+
+function getShortShift(shift) {
+
+    if (!shift) return '';
+
+    const match =
+        shift.match(
+            /(Turno [1-3])\s*\((.*?)\)/
+        );
+
+    if (!match) return shift;
+
+    return `${match[1]} · ${match[2]}`;
+
+}
+
+
+/* =========================================================
+   ESCAPAR HTML
+========================================================= */
+
+function escapeHtml(text) {
+
+    if (text === undefined || text === null) {
+        return '';
+    }
+
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+}
+
+
+/* =========================================================
+   REGISTRAR ASIGNACIÓN
+========================================================= */
+
+document
+    .getElementById('call-form')
+    .addEventListener(
+        'submit',
+        async function(e) {
+
+            e.preventDefault();
+
+
+            if (agents.length === 0) {
+
+                alert(
+                    'No hay agentes en la rueda.'
+                );
+
+                return;
+
+            }
+
+
+            const date =
+                document.getElementById(
+                    'service-date'
+                ).value;
+
+
+            const shift =
+                document.getElementById(
+                    'service-shift'
+                ).value;
+
+
+            const noticeDatetime =
+                document.getElementById(
+                    'notice-datetime'
+                ).value;
+
+
+            const reason =
+                document.getElementById(
+                    'service-reason'
+                ).value.trim();
+
+
+            const status =
+                document.getElementById(
+                    'service-status'
+                ).value;
+
+
+            const notes =
+                document.getElementById(
+                    'service-notes'
+                ).value.trim();
+
+
+            const noticeType =
+                calculateNoticeTypeExact(
+                    date,
+                    shift,
+                    noticeDatetime
+                );
+
+
+            const currentAgent =
+                agents[activeAgentIndex];
+
+
+            const assignedTip =
+                currentAgent.id;
+
+
+            const assignedName =
+                currentAgent.name;
+
+
+            let workerAgent =
+                currentAgent;
+
+
+           /* ------------------------------------------------
+   SALTO
+------------------------------------------------ */
+
+if (
+    status ===
+    'Salto Justificado'
+) {
+
+    currentAgent.skipped++;
+
+    activeAgentIndex++;
+
+    if (
+        activeAgentIndex >=
+        agents.length
+    ) {
+
+        activeAgentIndex = 0;
+
+    }
+
+    isSkipMode = true;
+
+}
+
+
+
+           /* ------------------------------------------------
+   REALIZADO
+------------------------------------------------ */
+
+else if (
+    status ===
+    'Realizado'
+) {
+
+    currentAgent.done++;
+
+
+    const removed =
+        agents.splice(
+            activeAgentIndex,
+            1
+        )[0];
+
+
+    agents.push(removed);
+
+
+    /* ------------------------------------------------
+       SI ESTÁBAMOS EN MODO SALTO,
+       VOLVEMOS AL AGENTE QUE FUE SALTADO
+    ------------------------------------------------ */
+
+    if (isSkipMode) {
+
+        const skippedIndex =
+            activeAgentIndex === 0
+                ? agents.length - 1
+                : activeAgentIndex - 1;
+
+
+        activeAgentIndex =
+            skippedIndex;
+
+    }
+
+
+    /* ------------------------------------------------
+       FUNCIONAMIENTO NORMAL
+    ------------------------------------------------ */
+
+    else {
+
+        if (
+            activeAgentIndex >=
+            agents.length
+        ) {
+
+            activeAgentIndex = 0;
+
+        }
+
+    }
+
+
+    isSkipMode = false;
+
+}
+
+            /* ------------------------------------------------
+               CEDIDO
+            ------------------------------------------------ */
+
+            else if (
+                status ===
+                'Cedido'
+            ) {
+
+                currentAgent.swapped++;
+
+
+                const targetTip =
+                    document.getElementById(
+                        'swap-agent'
+                    ).value;
+
+
+                const targetAgent =
+                    agents.find(
+                        a => a.id === targetTip
+                    );
+
+
+                if (targetAgent) {
+
+                    targetAgent.done++;
+
+                    workerAgent =
+                        targetAgent;
+
+                }
+
+
+                const removed =
+                    agents.splice(
+                        activeAgentIndex,
+                        1
+                    )[0];
+
+
+              agents.push(removed);
+
+		if (
+  	  activeAgentIndex >=
+   	 agents.length
+		) {
+
+		    activeAgentIndex = 0;
+
+		}
+
+		isSkipMode = false;
+
+            }
+
+
+            /* ------------------------------------------------
+               REGISTRO
+            ------------------------------------------------ */
+
+            history.push({
+
+                id: Date.now(),
+
+                date: date,
+
+                serviceTime:
+                    getShiftStartTime(shift),
+
+                shift: shift,
+
+                assignedTip:
+                    assignedTip,
+
+                assignedName:
+                    assignedName,
+
+                workerTip:
+                    status ===
+                    'Salto Justificado'
+                        ? '—'
+                        : workerAgent.id,
+
+                workerName:
+                    status ===
+                    'Salto Justificado'
+                        ? '—'
+                        : workerAgent.name,
+
+                reason: reason,
+
+                status: status,
+
+                noticeType:
+                    noticeType,
+
+                notes: notes,
+
+                noticeDatetime:
+                    noticeDatetime
+
+            });
+
+
+const historyRecord =
+    history[history.length - 1];
+
+const historySaved =
+    await saveHistoryRecord(historyRecord);
+
+if (!historySaved) {
+
+    alert(
+        'El servicio se ha procesado, pero no se pudo guardar el historial en Supabase.'
+    );
+
+    return;
+
+}
+
+
+
+            /* ------------------------------------------------
+               LIMPIAR
+            ------------------------------------------------ */
+
+            document.getElementById(
+                'service-reason'
+            ).value = '';
+
+
+            document.getElementById(
+                'service-notes'
+            ).value = '';
+
+
+            document.getElementById(
+                'service-status'
+            ).value =
+                'Realizado';
+
+
+            toggleSwapAgentField();
+
+            setNowNoticeDatetime();
+
+
+            saveState();
+
+            render();
+
+        }
+    );
+
+
+/* =========================================================
+   HORA INICIAL DEL TURNO
+========================================================= */
+
+function getShiftStartTime(shift) {
+
+    if (
+        shift.includes('Turno 2')
+    ) {
+
+        return '13:45';
+
+    }
+
+
+    if (
+        shift.includes('Turno 3')
+    ) {
+
+        return '21:45';
+
+    }
+
+
+    return '05:45';
+
+}
+
+
+/* =========================================================
+   BORRAR ÚLTIMO MOVIMIENTO
+========================================================= */
+
+async function deleteHistoryEntry(id) {
+
+    const index =
+        history.findIndex(
+            h => h.id === id
+        );
+
+    if (index === -1) {
+        return;
+    }
+
+
+    /* ---------------------------------------------------------
+       SOLO SE PUEDE BORRAR EL ÚLTIMO
+    --------------------------------------------------------- */
+
+    if (
+        index !==
+        history.length - 1
+    ) {
+
+        alert(
+            'Solo puedes borrar el último movimiento realizado.'
+        );
+
+        return;
+    }
+
+
+    const item =
+        history[index];
+
+
+    /* ---------------------------------------------------------
+       CONFIRMAR
+    --------------------------------------------------------- */
+
+    if (
+        !confirm(
+            `¿Eliminar el último movimiento de ${item.assigned_tip}? Se deshará también el movimiento de la rueda.`
+        )
+    ) {
+
+        return;
+    }
+
+
+    /* ---------------------------------------------------------
+       AGENTE LLAMADO
+    --------------------------------------------------------- */
+
+    const assignedAgent =
+        agents.find(
+            a =>
+                a.id ===
+                item.assigned_tip
+        );
+
+
+    if (!assignedAgent) {
+
+        alert(
+            'No se ha encontrado el agente del movimiento.'
+        );
+
+        return;
+    }
+
+
+    /* ---------------------------------------------------------
+       DESHACER CONTADORES
+    --------------------------------------------------------- */
+
+    if (
+        item.status ===
+        'Realizado'
+    ) {
+
+        assignedAgent.done =
+            Math.max(
+                0,
+                assignedAgent.done - 1
+            );
+
+    }
+
+
+    else if (
+        item.status ===
+        'Cedido'
+    ) {
+
+        assignedAgent.swapped =
+            Math.max(
+                0,
+                assignedAgent.swapped - 1
+            );
+
+
+        const workerAgent =
+            agents.find(
+                a =>
+                    a.id ===
+                    item.worker_tip
+            );
+
+
+        if (workerAgent) {
+
+            workerAgent.done =
+                Math.max(
+                    0,
+                    workerAgent.done - 1
+                );
+
+        }
+
+    }
+
+
+    else if (
+        item.status ===
+        'Salto Justificado'
+    ) {
+
+        assignedAgent.skipped =
+            Math.max(
+                0,
+                assignedAgent.skipped - 1
+            );
+
+    }
+
+
+    /* ---------------------------------------------------------
+       DETERMINAR AGENTE ANTERIOR
+    --------------------------------------------------------- */
+
+    const previousItem =
+        history.length > 1
+            ? history[
+                history.length - 2
+            ]
+            : null;
+
+
+    let previousActiveTip;
+
+
+    if (
+        item.status === 'Realizado' &&
+        previousItem &&
+        previousItem.status ===
+            'Salto Justificado'
+    ) {
+
+        previousActiveTip =
+            previousItem.assigned_tip;
+
+    }
+
+    else {
+
+        previousActiveTip =
+            item.assigned_tip;
+
+    }
+
+
+    /* ---------------------------------------------------------
+       BORRAR DE SUPABASE
+    --------------------------------------------------------- */
+
+    const { error } =
+        await supabaseClient
+            .from('history')
+            .delete()
+            .eq(
+                'id',
+                item.id
+            );
+
+
+    if (error) {
+
+        console.error(
+            'Error borrando historial:',
+            error
+        );
+
+        alert(
+            'No se pudo borrar el movimiento.'
+        );
+
+        return;
+    }
+
+
+    /* ---------------------------------------------------------
+       BORRAR DE MEMORIA
+    --------------------------------------------------------- */
+
+    history.splice(
+        index,
+        1
+    );
+
+
+    /* ---------------------------------------------------------
+       RESTAURAR AGENTE ACTIVO
+    --------------------------------------------------------- */
+
+    const restoredIndex =
+        agents.findIndex(
+            a =>
+                a.id ===
+                previousActiveTip
+        );
+
+
+    if (
+        restoredIndex === -1
+    ) {
+
+        console.error(
+            'No se encontró el agente anterior:',
+            previousActiveTip
+        );
+
+        return;
+    }
+
+
+    activeAgentIndex =
+        restoredIndex;
+
+
+    /* ---------------------------------------------------------
+       RESTAURAR MODO SALTO
+    --------------------------------------------------------- */
+
+    if (
+        previousItem &&
+        previousItem.status ===
+            'Salto Justificado' &&
+        item.status ===
+            'Realizado'
+    ) {
+
+        isSkipMode = true;
+
+    }
+
+    else {
+
+        isSkipMode = false;
+
+    }
+
+
+    /* ---------------------------------------------------------
+       GUARDAR ESTADO
+    --------------------------------------------------------- */
+
+    const stateSaved =
+        await saveState();
+
+
+    if (!stateSaved) {
+
+        alert(
+            'El movimiento se borró, pero hubo un problema guardando la rueda.'
+        );
+
+        return;
+    }
+
+
+    /* ---------------------------------------------------------
+       ACTUALIZAR PANTALLA
+    --------------------------------------------------------- */
+
+    render();
+
+}
+
+/* =========================================================
+   REINICIAR
+========================================================= */
+
+function resetApplication() {
+
+    const confirmed =
+        confirm(
+            '¿Seguro que quieres reiniciar?'
+        );
+
+
+    if (!confirmed) {
+        return;
+    }
+
+
+    const confirmedAgain =
+        confirm(
+            'Se borrará el historial y se restablecerá la rueda. ¿Continuar?'
+        );
+
+
+    if (!confirmedAgain) {
+        return;
+    }
+
+
+    localStorage.removeItem(
+        'rueda_agents'
+    );
+
+    localStorage.removeItem(
+        'rueda_activeIdx'
+    );
+
+    localStorage.removeItem(
+        'rueda_skipMode'
+    );
+
+    localStorage.removeItem(
+        'rueda_history'
+    );
+
+
+    agents =
+        defaultTips.map(tip => ({
+
+            id: tip,
+
+            name: `Agente ${tip}`,
+
+            done: 0,
+
+            swapped: 0,
+
+            skipped: 0
+
+        }));
+
+
+    activeAgentIndex = 0;
+
+    isSkipMode = false;
+
+    history = [];
+
+
+    saveState();
+
+    render();
+
+}
+
+
+/* =========================================================
+   EXPORTAR PDF
+========================================================= */
+
+function exportToPDF() {
+
+    if (
+        !window.jspdf ||
+        !window.jspdf.jsPDF
+    ) {
+
+        alert(
+            'No se ha podido cargar el generador PDF.'
+        );
+
+        return;
+
+    }
+
+
+    const {
+        jsPDF
+    } = window.jspdf;
+
+
+   const doc =
+    new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+
+/* -------------------------------------------------------
+   ORDENAR HISTORIAL
+   Último movimiento primero.
+   El orden real se conserva en history.
+------------------------------------------------------- */
+
+const sortedHistory =
+    history
+        .slice()
+        .reverse();
+
+
+/* -------------------------------------------------------
+   CABECERA
+------------------------------------------------------- */
+
+doc.setFillColor(
+    27,
+    54,
+    93
+);
+
+    doc.rect(
+        0,
+        0,
+        210,
+        30,
+        'F'
+    );
+
+
+    doc.setTextColor(
+        255,
+        255,
+        255
+    );
+
+
+    doc.setFont(
+        'helvetica',
+        'bold'
+    );
+
+
+    doc.setFontSize(14);
+
+
+    doc.text(
+        'JEFATURA DE POLICÍA LOCAL',
+        14,
+        12
+    );
+
+
+    doc.setFontSize(9);
+
+
+    doc.setFont(
+        'helvetica',
+        'normal'
+    );
+
+
+    doc.text(
+        'HISTORIAL DE COBERTURAS Y AVISOS',
+        14,
+        18
+    );
+
+
+    doc.text(
+        'RUEDA DE SERVICIOS',
+        14,
+        23
+    );
+
+
+    const today =
+        new Date()
+            .toLocaleDateString(
+                'es-ES'
+            );
+
+
+    doc.text(
+        `Emisión: ${today}`,
+        150,
+        18
+    );
+
+
+    /* -------------------------------------------------------
+       TÍTULO
+    ------------------------------------------------------- */
+
+    doc.setTextColor(
+        27,
+        54,
+        93
+    );
+
+
+    doc.setFontSize(11);
+
+    doc.setFont(
+        'helvetica',
+        'bold'
+    );
+
+
+    doc.text(
+        'Relación de servicios',
+        14,
+        40
+    );
+
+
+    /* -------------------------------------------------------
+       LEYENDA DEL RESULTADO
+    ------------------------------------------------------- */
+
+    doc.setFont(
+        'helvetica',
+        'normal'
+    );
+
+    doc.setFontSize(7.5);
+
+    doc.setTextColor(
+        71,
+        85,
+        105
+    );
+
+    doc.text(
+        'Resultado: ✓ = servicio realizado por el agente llamado   ✕ = no realizado por el agente llamado',
+        14,
+        44
+    );
+
+
+  const tableData =
+    sortedHistory.map(
+        item => {
+
+            const agentDidService =
+                item.status === 'Realizado';
+
+            return [
+
+                formatDate(
+                    item.service_date
+                ),
+
+                getShortShift(
+                    item.shift
+                ),
+
+                item.assigned_tip,
+
+                agentDidService
+                    ? 'SÍ'
+                    : 'NO',
+
+                item.worker_tip || '—',
+
+                item.reason || '-',
+
+                item.notice_type
+
+            ];
+
+        }
+    );
+    /* -------------------------------------------------------
+       TABLA PDF
+    ------------------------------------------------------- */
+
+    doc.autoTable({
+
+        startY: 48,
+
+        margin: {
+            left: 10,
+            right: 10,
+            top: 10,
+            bottom: 15
+        },
+
+        head: [[
+
+            'Fecha',
+
+            'Turno',
+
+            'Agente llamado',
+
+            '¿Realizó?',
+
+            'Realiza finalmente',
+
+            'Motivo',
+
+            'Antelación'
+
+        ]],
+
+        body: tableData,
+
+        theme: 'grid',
+
+        styles: {
+
+            fontSize: 7.5,
+
+            cellPadding: 2.2,
+
+            valign: 'middle',
+
+            lineColor: [
+                203,
+                213,
+                225
+            ],
+
+            lineWidth: 0.2,
+
+            textColor: [
+                30,
+                41,
+                59
+            ]
+
+        },
+
+        headStyles: {
+
+            fillColor: [
+                27,
+                54,
+                93
+            ],
+
+            textColor: [
+                255,
+                255,
+                255
+            ],
+
+            fontStyle: 'bold',
+
+            fontSize: 7.5,
+
+            halign: 'center',
+
+            valign: 'middle'
+
+        },
+
+        columnStyles: {
+
+            0: {
+                cellWidth: 20,
+                halign: 'center'
+            },
+
+            1: {
+                cellWidth: 33,
+                halign: 'center'
+            },
+
+            2: {
+                cellWidth: 25,
+                halign: 'center',
+                fontStyle: 'bold'
+            },
+
+            3: {
+                cellWidth: 20,
+                halign: 'center',
+                fontStyle: 'bold'
+            },
+
+            4: {
+                cellWidth: 28,
+                halign: 'center'
+            },
+
+            5: {
+                cellWidth: 'auto'
+            },
+
+            6: {
+                cellWidth: 22,
+                halign: 'center'
+            }
+
+        },
+
+        alternateRowStyles: {
+
+            fillColor: [
+                248,
+                250,
+                252
+            ]
+
+        },
+
+        didParseCell: function(data) {
+
+            /*
+             * Columna ¿Realizó?
+             * Se colorea de forma inequívoca:
+             * SÍ = verde
+             * NO = rojo
+             */
+            if (
+                data.section === 'body' &&
+                data.column.index === 3
+            ) {
+
+                const value =
+                    String(data.cell.raw || '')
+                        .toUpperCase();
+
+                if (value === 'SÍ') {
+
+                    data.cell.styles.textColor = [
+                        5,
+                        150,
+                        105
+                    ];
+
+                    data.cell.styles.fillColor = [
+                        220,
+                        252,
+                        231
+                    ];
+
+                } else {
+
+                    data.cell.styles.textColor = [
+                        220,
+                        38,
+                        38
+                    ];
+
+                    data.cell.styles.fillColor = [
+                        254,
+                        226,
+                        226
+                    ];
+
+                }
+
+            }
+
+            /*
+             * Columna "Realiza finalmente":
+             * Si hay cesión, se identifica visualmente.
+             */
+            if (
+                data.section === 'body' &&
+                data.column.index === 4
+            ) {
+
+                const value =
+                    String(data.cell.raw || '');
+
+                if (value === '—') {
+
+                    data.cell.styles.textColor = [
+                        220,
+                        38,
+                        38
+                    ];
+
+                }
+
+            }
+
+        },
+
+        didDrawCell: function(data) {
+
+            /*
+             * Dibujamos los símbolos como vectores en vez de
+             * utilizar caracteres Unicode, para garantizar que
+             * aparezcan correctamente en cualquier PDF.
+             */
+            if (
+                data.section === 'body' &&
+                data.column.index === 3
+            ) {
+
+                const value =
+                    String(data.cell.raw || '')
+                        .toUpperCase();
+
+                const cell =
+                    data.cell;
+
+                const centerX =
+                    cell.x + cell.width / 2;
+
+                const centerY =
+                    cell.y + cell.height / 2;
+
+                if (value === 'SÍ') {
+
+                    /*
+                     * CÍRCULO VERDE
+                     */
+                    doc.setFillColor(
+                        22,
+                        163,
+                        74
+                    );
+
+                    doc.circle(
+                        centerX - 4.2,
+                        centerY,
+                        3.1,
+                        'F'
+                    );
+
+                    /*
+                     * CHECK BLANCO
+                     */
+                    doc.setDrawColor(
+                        255,
+                        255,
+                        255
+                    );
+
+                    doc.setLineWidth(0.7);
+
+                    doc.line(
+                        centerX - 5.7,
+                        centerY,
+                        centerX - 4.5,
+                        centerY + 1.4
+                    );
+
+                    doc.line(
+                        centerX - 4.5,
+                        centerY + 1.4,
+                        centerX - 2.3,
+                        centerY - 1.5
+                    );
+
+                } else {
+
+                    /*
+                     * CÍRCULO ROJO
+                     */
+                    doc.setFillColor(
+                        220,
+                        38,
+                        38
+                    );
+
+                    doc.circle(
+                        centerX - 4.2,
+                        centerY,
+                        3.1,
+                        'F'
+                    );
+
+                    /*
+                     * X BLANCA
+                     */
+                    doc.setDrawColor(
+                        255,
+                        255,
+                        255
+                    );
+
+                    doc.setLineWidth(0.7);
+
+                    doc.line(
+                        centerX - 5.5,
+                        centerY - 1.3,
+                        centerX - 2.9,
+                        centerY + 1.3
+                    );
+
+                    doc.line(
+                        centerX - 2.9,
+                        centerY - 1.3,
+                        centerX - 5.5,
+                        centerY + 1.3
+                    );
+
+                }
+
+                /*
+                 * Desplazamos el texto para dejar sitio al icono.
+                 * AutoTable ya dibujó el texto; lo tapamos con el
+                 * fondo de la celda y lo volvemos a escribir.
+                 */
+                doc.setFillColor(
+                    value === 'SÍ'
+                        ? 220
+                        : 254,
+                    value === 'SÍ'
+                        ? 252
+                        : 226,
+                    value === 'SÍ'
+                        ? 231
+                        : 226
+                );
+
+                doc.rect(
+                    cell.x + 7,
+                    cell.y + 0.2,
+                    cell.width - 7.2,
+                    cell.height - 0.4,
+                    'F'
+                );
+
+                doc.setFont(
+                    'helvetica',
+                    'bold'
+                );
+
+                doc.setFontSize(7.5);
+
+                doc.setTextColor(
+                    value === 'SÍ'
+                        ? 5
+                        : 220,
+                    value === 'SÍ'
+                        ? 150
+                        : 38,
+                    value === 'SÍ'
+                        ? 105
+                        : 38
+                );
+
+                doc.text(
+                    value === 'SÍ'
+                        ? 'SÍ'
+                        : 'NO',
+                    cell.x + 10,
+                    centerY + 2.2,
+                    {
+                        align: 'left'
+                    }
+                );
+
+                /*
+                 * Restauramos los valores de dibujo para el
+                 * resto de la tabla.
+                 */
+                doc.setDrawColor(
+                    203,
+                    213,
+                    225
+                );
+
+                doc.setLineWidth(0.2);
+
+            }
+
+        }
+
+    });
+
+
+    /* -------------------------------------------------------
+       RESUMEN FINAL
+    ------------------------------------------------------- */
+
+    const finalY =
+        doc.lastAutoTable
+            ? doc.lastAutoTable.finalY
+            : 48;
+
+
+    /*
+     * Si la tabla ocupa casi toda la página, creamos una página
+     * nueva para que el resumen nunca quede cortado.
+     */
+    let summaryY =
+        finalY + 10;
+
+    if (summaryY > 275) {
+
+        doc.addPage();
+
+        summaryY = 20;
+
+    }
+
+
+    const total =
+        sortedHistory.length;
+
+    const realizadas =
+        sortedHistory.filter(
+            item =>
+                item.status === 'Realizado'
+        ).length;
+
+    const noRealizadas =
+        total - realizadas;
+
+
+    /* -------------------------------------------------------
+       CAJA RESUMEN
+    ------------------------------------------------------- */
+
+    doc.setFillColor(
+        248,
+        250,
+        252
+    );
+
+    doc.setDrawColor(
+        203,
+        213,
+        225
+    );
+
+    doc.roundedRect(
+        10,
+        summaryY,
+        190,
+        17,
+        2,
+        2,
+        'FD'
+    );
+
+
+    doc.setFont(
+        'helvetica',
+        'bold'
+    );
+
+    doc.setFontSize(8);
+
+    doc.setTextColor(
+        27,
+        54,
+        93
+    );
+
+    doc.text(
+        `TOTAL: ${total}`,
+        16,
+        summaryY + 7
+    );
+
+
+    doc.setTextColor(
+        5,
+        150,
+        105
+    );
+
+    doc.text(
+        `✓ REALIZADOS POR EL AGENTE LLAMADO: ${realizadas}`,
+        65,
+        summaryY + 7
+    );
+
+
+    doc.setTextColor(
+        220,
+        38,
+        38
+    );
+
+    doc.text(
+        `✕ NO REALIZADOS POR EL AGENTE LLAMADO: ${noRealizadas}`,
+        65,
+        summaryY + 12.5
+    );
+
+
+    /* -------------------------------------------------------
+       PIE
+    ------------------------------------------------------- */
+
+    doc.setFont(
+        'helvetica',
+        'normal'
+    );
+
+    doc.setFontSize(7.5);
+
+    doc.setTextColor(
+        100,
+        116,
+        139
+    );
+
+    doc.text(
+        'Documento generado automáticamente por la aplicación de gestión de rueda.',
+        14,
+        summaryY + 26
+    );
+
+
+    /* -------------------------------------------------------
+       PIE DE PÁGINA EN TODAS LAS PÁGINAS
+    ------------------------------------------------------- */
+
+    const pageCount =
+        doc.internal.getNumberOfPages();
+
+    for (
+        let page = 1;
+        page <= pageCount;
+        page++
+    ) {
+
+        doc.setPage(page);
+
+        const pageHeight =
+            doc.internal.pageSize.getHeight();
+
+        doc.setDrawColor(
+            226,
+            232,
+            240
+        );
+
+        doc.setLineWidth(0.2);
+
+        doc.line(
+            10,
+            pageHeight - 10,
+            200,
+            pageHeight - 10
+        );
+
+        doc.setFont(
+            'helvetica',
+            'normal'
+        );
+
+        doc.setFontSize(7);
+
+        doc.setTextColor(
+            148,
+            163,
+            184
+        );
+
+        doc.text(
+            `Rueda de Servicios · Página ${page} de ${pageCount}`,
+            105,
+            pageHeight - 5.5,
+            {
+                align: 'center'
+            }
+        );
+
+    }
+
+
+    /* -------------------------------------------------------
+       GUARDAR
+    ------------------------------------------------------- */
+
+    doc.save(
+        `Historial_Rueda_Policial_${today.replace(/\//g, '-')}.pdf`
+    );
+
+}
+
+
+
+ /* =========================================================
+   ARRANQUE
+========================================================= */
+
+(async function initApplication() {
+
+    /* ---------------------------------------------------------
+       CERRAR SESIÓN ANTERIOR
+    --------------------------------------------------------- */
+
+    await supabaseClient.auth.signOut();
+
+
+    /* ---------------------------------------------------------
+       MOSTRAR LOGIN
+    --------------------------------------------------------- */
+
+    const loginScreen =
+        document.getElementById('login-screen');
+
+    loginScreen.style.display =
+        'flex';
+
+})();
+
+
+</script>
+
+</body>
+</html>
