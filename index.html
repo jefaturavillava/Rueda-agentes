@@ -1889,6 +1889,51 @@ function escapeHtml(text) {
 
 
 /* =========================================================
+   PRIMER SALTO PENDIENTE
+========================================================= */
+
+function getFirstPendingSkippedAgentIndex() {
+
+    let firstSkippedTip =
+        null;
+
+    for (
+        let index = history.length - 1;
+        index >= 0;
+        index--
+    ) {
+
+        const record =
+            normalizeHistoryRecord(
+                history[index]
+            );
+
+        if (
+            record.status !==
+            'Salto Justificado'
+        ) {
+            break;
+        }
+
+        firstSkippedTip =
+            record.assigned_tip;
+
+    }
+
+    if (!firstSkippedTip) {
+        return -1;
+    }
+
+    return agents.findIndex(
+        agent =>
+            agent.id ===
+            firstSkippedTip
+    );
+
+}
+
+
+/* =========================================================
    REGISTRAR ASIGNACIÓN
 ========================================================= */
 
@@ -2023,41 +2068,33 @@ else if (
 
 
     /* ------------------------------------------------
-       SI ESTÁBAMOS EN MODO SALTO,
-       VOLVEMOS AL AGENTE QUE FUE SALTADO
+       SI HAY SALTOS PENDIENTES, VOLVEMOS AL PRIMERO
     ------------------------------------------------ */
 
     if (isSkipMode) {
 
-        const skippedIndex =
-            activeAgentIndex === 0
-                ? agents.length - 1
-                : activeAgentIndex - 1;
-
+        const firstSkippedIndex =
+            getFirstPendingSkippedAgentIndex();
 
         activeAgentIndex =
-            skippedIndex;
+            firstSkippedIndex !== -1
+                ? firstSkippedIndex
+                : activeAgentIndex;
 
     }
-
 
     /* ------------------------------------------------
        FUNCIONAMIENTO NORMAL
     ------------------------------------------------ */
 
-    else {
+    else if (
+        activeAgentIndex >=
+        agents.length
+    ) {
 
-        if (
-            activeAgentIndex >=
-            agents.length
-        ) {
-
-            activeAgentIndex = 0;
-
-        }
+        activeAgentIndex = 0;
 
     }
-
 
     isSkipMode = false;
 
@@ -2106,16 +2143,28 @@ else if (
 
               agents.push(removed);
 
-		if (
-  	  activeAgentIndex >=
-   	 agents.length
-		) {
+                if (isSkipMode) {
 
-		    activeAgentIndex = 0;
+                    const firstSkippedIndex =
+                        getFirstPendingSkippedAgentIndex();
 
-		}
+                    activeAgentIndex =
+                        firstSkippedIndex !== -1
+                            ? firstSkippedIndex
+                            : activeAgentIndex;
 
-		isSkipMode = false;
+                }
+
+                else if (
+                    activeAgentIndex >=
+                    agents.length
+                ) {
+
+                    activeAgentIndex = 0;
+
+                }
+
+                isSkipMode = false;
 
             }
 
