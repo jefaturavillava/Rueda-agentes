@@ -38,6 +38,18 @@
         .safe-area-bottom {
             padding-bottom: env(safe-area-inset-bottom);
         }
+
+        .police-checkerboard {
+            height: 16px;
+            background-color: #ffffff;
+            background-image: conic-gradient(
+                #0b5ea8 25%,
+                #ffffff 0 50%,
+                #0b5ea8 0 75%,
+                #ffffff 0
+            );
+            background-size: 16px 16px;
+        }
     </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -251,7 +263,7 @@ async function loginApplication() {
 
 <div id="app-content" style="display: none;">
 
-<header class="bg-slate-900 text-white border-b-4 border-amber-500 sticky top-0 z-50 shadow-md">
+<header class="bg-[#0b3a6e] text-white sticky top-0 z-50 shadow-md">
 
     <div class="px-4 py-3">
 
@@ -288,12 +300,17 @@ async function loginApplication() {
 
         </div>
 
-        <div class="mt-2 text-right text-[10px] text-slate-400">
+        <div class="mt-2 text-right text-[10px] text-blue-100">
             <span id="current-date"></span>
             <span class="mx-1">•</span>
             Jefatura
         </div>
 
+    </div>
+
+    <div
+        class="police-checkerboard"
+        aria-hidden="true">
     </div>
 
 </header>
