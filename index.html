@@ -1868,6 +1868,63 @@ function getShortShift(shift) {
 }
 
 
+function getPdfShift(shift) {
+
+    const match =
+        String(shift || '')
+            .match(/Turno\s*[1-3]/i);
+
+    return match
+        ? match[0]
+        : '—';
+
+}
+
+async function loadPdfLogo() {
+
+    const logo =
+        new Image();
+
+    logo.crossOrigin =
+        'anonymous';
+
+    const loaded =
+        new Promise(
+            (resolve, reject) => {
+
+                logo.onload =
+                    () => resolve(logo);
+
+                logo.onerror =
+                    reject;
+
+                setTimeout(
+                    reject,
+                    3000
+                );
+
+            }
+        );
+
+    logo.src =
+        'https://www.villava.es/wp-content/uploads/2026/04/EscudoPMVA.png';
+
+    try {
+        return await loaded;
+    }
+
+    catch (error) {
+        console.warn(
+            'No se ha podido cargar el escudo para el PDF.',
+            error
+        );
+
+        return null;
+    }
+
+}
+
+
 /* =========================================================
    ESCAPAR HTML
 ========================================================= */
@@ -2708,7 +2765,7 @@ async function resetApplication() {
    EXPORTAR PDF
 ========================================================= */
 
-function exportToPDF() {
+async function exportToPDF() {
 
     if (
         !window.jspdf ||
@@ -2751,82 +2808,162 @@ const sortedHistory =
 
 
 /* -------------------------------------------------------
-   CABECERA
+   CABECERA POLICIAL
 ------------------------------------------------------- */
 
+const pdfLogo =
+    await loadPdfLogo();
+
 doc.setFillColor(
-    27,
-    54,
-    93
+    9,
+    45,
+    79
 );
 
+doc.rect(
+    0,
+    0,
+    210,
+    34,
+    'F'
+);
+
+/* Damero policial */
+for (
+    let position = 0;
+    position < 210;
+    position += 8
+) {
+
+    doc.setFillColor(
+        position % 16 === 0
+            ? 255
+            : 11,
+        position % 16 === 0
+            ? 255
+            : 94,
+        position % 16 === 0
+            ? 255
+            : 168
+    );
+
     doc.rect(
-        0,
-        0,
-        210,
+        position,
         30,
+        8,
+        4,
         'F'
     );
 
+}
 
-    doc.setTextColor(
-        255,
-        255,
-        255
+doc.setTextColor(
+    255,
+    255,
+    255
+);
+
+doc.setFont(
+    'helvetica',
+    'bold'
+);
+
+doc.setFontSize(14);
+
+doc.text(
+    'JEFATURA DE POLICÍA LOCAL',
+    14,
+    12
+);
+
+doc.setFontSize(9);
+
+doc.setFont(
+    'helvetica',
+    'normal'
+);
+
+doc.text(
+    'VILLAVA-ATARRABIA · RUEDA DE SERVICIOS',
+    14,
+    18
+);
+
+doc.setFontSize(7.5);
+
+doc.setTextColor(
+    191,
+    219,
+    254
+);
+
+doc.text(
+    'Historial de coberturas y avisos',
+    14,
+    24
+);
+
+doc.text(
+    `Emisión: ${today}`,
+    14,
+    28
+);
+
+/* Escudo municipal */
+doc.setFillColor(
+    255,
+    255,
+    255
+);
+
+doc.roundedRect(
+    174,
+    4,
+    22,
+    22,
+    3,
+    3,
+    'F'
+);
+
+if (pdfLogo) {
+
+    doc.addImage(
+        pdfLogo,
+        'PNG',
+        176,
+        5,
+        18,
+        20
     );
 
+}
+
+else {
 
     doc.setFont(
         'helvetica',
         'bold'
     );
 
+    doc.setFontSize(7);
 
-    doc.setFontSize(14);
-
+    doc.setTextColor(
+        9,
+        45,
+        79
+    );
 
     doc.text(
-        'JEFATURA DE POLICÍA LOCAL',
-        14,
-        12
+        'PMVA',
+        185,
+        17,
+        {
+            align: 'center'
+        }
     );
 
-
-    doc.setFontSize(9);
-
-
-    doc.setFont(
-        'helvetica',
-        'normal'
-    );
-
-
-    doc.text(
-        'HISTORIAL DE COBERTURAS Y AVISOS',
-        14,
-        18
-    );
-
-
-    doc.text(
-        'RUEDA DE SERVICIOS',
-        14,
-        23
-    );
-
-
-    const today =
-        new Date()
-            .toLocaleDateString(
-                'es-ES'
-            );
-
-
-    doc.text(
-        `Emisión: ${today}`,
-        150,
-        18
-    );
+}
 
 
     /* -------------------------------------------------------
@@ -2892,7 +3029,7 @@ doc.setFillColor(
                     item.service_date
                 ),
 
-                getShortShift(
+                getPdfShift(
                     item.shift
                 ),
 
