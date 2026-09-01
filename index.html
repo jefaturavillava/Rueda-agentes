@@ -101,6 +101,17 @@ async function loginApplication() {
 
         });
 
+const { data: userData } = await supabaseClient.auth.getUser();
+
+const { data: profile } = await supabaseClient
+    .from('profiles')
+    .select('role')
+    .eq('id', userData.user.id)
+    .single();
+
+currentUserRole = profile?.role || 'viewer';
+
+
     if (error) {
 
         console.error(
@@ -271,9 +282,9 @@ async function loginApplication() {
 
             <div class="flex items-center gap-3">
 
-              <div class="w-16 h-16 flex items-center justify-center overflow-hidden">
+              <div class="w-20 h-20 flex items-center justify-center overflow-hidden">
     <img
-        src="https://www.villava.es/wp-content/uploads/2026/04/EscudoPMVA.png"
+        src="./EscudoPMVA.png"
         alt="Policía Municipal de Villava-Atarrabia"
         class="w-full h-full object-contain">
 </div>
@@ -283,7 +294,7 @@ async function loginApplication() {
                         POLICÍA LOCAL DE VILLAVA-ATARRABIA
                     </h1>
 
-                    <p class="text-[12px] text-amber-400 font-medium">
+                    <p class="text-[18px] text-amber-400 font-medium">
                         Gestión de rueda para cubrir turnos
                     </p>
                 </div>
@@ -1306,7 +1317,7 @@ function calculateNoticeTypeExact(
 ========================================================= */
 
 function editAgentName(tip) {
-
+    if (currentUserRole !== 'admin') return;
     const agent =
         agents.find(a => a.id === tip);
 
@@ -1342,7 +1353,7 @@ function editAgentName(tip) {
 ========================================================= */
 
 function removeAgent(tip) {
-
+    if (currentUserRole !== 'admin') return;
     if (agents.length <= 1) {
 
         alert(
@@ -1912,8 +1923,7 @@ async function loadPdfLogo() {
             }
         );
 
-    logo.src =
-        'https://www.villava.es/wp-content/uploads/2026/04/EscudoPMVA.png';
+    logo.src = './EscudoPMVA.png';
 
     try {
         return await loaded;
@@ -2008,6 +2018,10 @@ document
 
             e.preventDefault();
 
+            if (currentUserRole !== 'admin') {
+         alert('No tienes permisos para realizar esta acción.');
+         return;
+}
 
             if (agents.length === 0) {
 
@@ -2365,7 +2379,7 @@ function getShiftStartTime(shift) {
 ========================================================= */
 
 async function deleteHistoryEntry(id) {
-
+    if (currentUserRole !== 'admin') return;
     const index =
         history.findIndex(
             h => h.id === id
@@ -2659,7 +2673,10 @@ async function deleteHistoryEntry(id) {
 ========================================================= */
 
 async function resetApplication() {
-
+    if (currentUserRole !== 'admin') {
+    alert('No tienes permisos para realizar esta acción.');
+    return;
+}
     const confirmed =
         confirm(
             '¿Seguro que quieres reiniciar la rueda?'
@@ -2773,6 +2790,8 @@ async function resetApplication() {
 
 async function exportToPDF() {
 
+    const today = new Date().toLocaleDateString('es-ES');
+
     if (
         !window.jspdf ||
         !window.jspdf.jsPDF
@@ -2878,7 +2897,7 @@ doc.setFontSize(14);
 
 doc.text(
     'JEFATURA DE POLICÍA LOCAL',
-    14,
+    25,
     12
 );
 
@@ -2891,7 +2910,7 @@ doc.setFont(
 
 doc.text(
     'VILLAVA-ATARRABIA · RUEDA DE SERVICIOS',
-    14,
+    25,
     18
 );
 
@@ -2903,37 +2922,22 @@ doc.setTextColor(
     254
 );
 
-doc.text(
-    'Historial de coberturas y avisos',
-    14,
-    24
-);
+
+
+const now = new Date();
 
 doc.text(
-    `Emisión: ${today}`,
+    `Fecha de emisión: ${now.toLocaleDateString('es-ES')} - ${now.toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit'
+    })}`,
     14,
     28
 );
 
 /* Escudo municipal */
-doc.setFillColor(
-    255,
-    255,
-    255
-);
 
-doc.roundedRect(
-    174,
-    4,
-    22,
-    22,
-    3,
-    3,
-    'F'
-);
-
-let pdfLogoAdded =
-    false;
+let pdfLogoAdded = false;
 
 if (pdfLogo) {
 
@@ -2942,10 +2946,10 @@ if (pdfLogo) {
         doc.addImage(
             pdfLogo,
             'PNG',
-            176,
+            10,
             5,
-            18,
-            20
+            14,
+            16
         );
 
         pdfLogoAdded = true;
@@ -3010,7 +3014,7 @@ if (!pdfLogoAdded) {
 
 
     doc.text(
-        'Relación de servicios',
+        'Historial de servicios',
         14,
         40
     );
@@ -3033,11 +3037,7 @@ if (!pdfLogoAdded) {
         105
     );
 
-    doc.text(
-        'Resultado: ✓ = servicio realizado por el agente llamado   ✕ = no realizado por el agente llamado',
-        14,
-        44
-    );
+    
 
 
   const tableData =
@@ -3079,7 +3079,7 @@ if (!pdfLogoAdded) {
 
     doc.autoTable({
 
-        startY: 48,
+        startY: 43,
 
         margin: {
             left: 10,
