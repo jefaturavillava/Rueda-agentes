@@ -430,176 +430,256 @@ currentUserRole = profile?.role || 'viewer';
     </div>
 
 
+    <div class="mb-5">
+
+    <div class="flex items-center gap-3 mb-1">
+
+        <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+            <i class="fa-solid fa-calendar-check text-amber-600"></i>
+        </div>
+
+        <div>
+            <h2 class="text-lg font-bold text-slate-900">
+                Asignar servicio
+            </h2>
+
+            <p class="text-xs text-slate-500">
+                Registra el servicio y la actuación del agente
+            </p>
+        </div>
+
+    </div>
+
+</div>
+
     <form id="call-form" class="space-y-4">
 
 
-        <!-- FECHA -->
+        <!-- FECHA + TURNO -->
 
-        <div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-            <label class="block text-xs font-bold text-slate-600 mb-1.5">
-                Fecha del servicio
-            </label>
+    <!-- FECHA -->
 
-            <input
-                type="date"
-                id="service-date"
-                required
-                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-amber-500 outline-none">
+    <div>
 
-        </div>
+        <label class="block text-xs font-bold text-slate-600 mb-1.5">
+            Fecha del servicio
+        </label>
+
+        <input
+            type="date"
+            id="service-date"
+            required
+            class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-slate-50 focus:ring-2 focus:ring-amber-500 outline-none">
+
+    </div>
 
 
-        <!-- TURNO -->
+    <!-- TURNO -->
 
-        <div>
+    <div>
 
-            <label class="block text-xs font-bold text-slate-600 mb-1.5">
-                Turno a cubrir
-            </label>
+        <label class="block text-xs font-bold text-slate-600 mb-1.5">
+            Turno a cubrir
+        </label>
 
-            <select
-                id="service-shift"
-                required
-                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+        <select
+            id="service-shift"
+            required
+            class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
 
-                <option value="Turno 1 (05:45 - 13:45)">
-                    Turno 1 (05:45 - 13:45)
-                </option>
+            <option value="Turno 1 (05:45 - 13:45)">
+                Turno 1 (05:45 - 13:45)
+            </option>
 
-                <option value="Turno 2 (13:45 - 21:45)">
-                    Turno 2 (13:45 - 21:45)
-                </option>
+            <option value="Turno 2 (13:45 - 21:45)">
+                Turno 2 (13:45 - 21:45)
+            </option>
 
-                <option value="Turno 3 (21:45 - 05:45)">
-                    Turno 3 (21:45 - 05:45)
-                </option>
+            <option value="Turno 3 (21:45 - 05:45)">
+                Turno 3 (21:45 - 05:45)
+            </option>
 
-            </select>
+        </select>
 
-        </div>
+    </div>
+
+</div>
 
 
         <!-- AVISO -->
 
-        <div>
+<div class="bg-amber-50/70 border border-amber-200 rounded-xl p-4">
 
-            <label class="block text-xs font-bold text-slate-600 mb-1.5">
+    <div class="flex items-center gap-2 mb-2">
+
+        <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+            <i class="fa-solid fa-clock text-amber-600 text-sm"></i>
+        </div>
+
+        <div>
+            <label class="block text-xs font-bold text-amber-800">
                 Fecha y hora del aviso
             </label>
 
-            <input
-                type="datetime-local"
-                id="notice-datetime"
-                required
-                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-amber-50 focus:ring-2 focus:ring-amber-500 outline-none">
-
-            <p class="text-[10px] text-slate-500 mt-1">
-                La aplicación calculará automáticamente si el aviso fue
-                <strong>+48 h</strong> o <strong>-48 h</strong>.
+            <p class="text-[10px] text-amber-700">
+                Momento en que se comunica el servicio
             </p>
-
         </div>
 
+    </div>
 
-        <!-- MOTIVO -->
+    <input
+        type="datetime-local"
+        id="notice-datetime"
+        required
+        class="w-full text-sm border border-amber-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
 
-        <div>
+    <p class="text-[10px] text-slate-500 mt-2">
+        La aplicación calculará automáticamente si el aviso fue
+        <strong>+48 h</strong> o <strong>-48 h</strong>.
+    </p>
 
-            <label class="block text-xs font-bold text-slate-600 mb-1.5">
-                Motivo de la vacante
-            </label>
+</div>
 
-            <input
-                type="text"
-                id="service-reason"
-                required
-                placeholder="Ej. Baja médica / Licencia..."
-                class="w-full text-sm border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-amber-500 outline-none">
+<!-- MOTIVO -->
 
-        </div>
+<div>
+
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">
+        Motivo de la vacante
+    </label>
+
+    <div class="relative">
+
+        <i class="fa-solid fa-file-circle-exclamation absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+
+        <input
+            type="text"
+            id="service-reason"
+            required
+            placeholder="Ej. Baja médica / Licencia..."
+            class="w-full text-sm border border-slate-300 rounded-xl py-3 pl-10 pr-3 focus:ring-2 focus:ring-amber-500 outline-none">
+
+    </div>
+
+</div>
 
 
         <!-- ACTUACIÓN -->
 
-        <div>
+<div>
 
-            <label class="block text-xs font-bold text-slate-600 mb-1.5">
-                Actuación del agente llamado
-            </label>
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">
+        Actuación del agente llamado
+    </label>
 
-            <select
-                id="service-status"
-                onchange="toggleSwapAgentField()"
-                required
-                class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+    <select
+        id="service-status"
+        onchange="toggleSwapAgentField()"
+        required
+        class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
 
-                <option value="Realizado">
-                    Realiza el servicio
-                </option>
+        <option value="Realizado">
+            ✓ Realiza el servicio
+        </option>
 
-                <option value="Salto Justificado">
-                    Salto justificado
-                </option>
+        <option value="Salto Justificado">
+            ⚠ Salto justificado
+        </option>
 
-                <option value="Cedido">
-                    Cede el servicio a otro agente
-                </option>
+        <option value="Cedido">
+            ↔ Cede el servicio a otro agente
+        </option>
 
-            </select>
+    </select>
 
-        </div>
+    <p class="text-[10px] text-slate-500 mt-1.5">
+        Indica qué ocurre con el servicio asignado al agente.
+    </p>
+
+</div>
 
 
         <!-- AGENTE AL QUE CEDE -->
 
-        <div
-            id="swap-agent-container"
-            class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3">
+<div
+    id="swap-agent-container"
+    class="hidden bg-amber-50 border border-amber-200 rounded-xl p-4">
 
-            <label class="block text-xs font-bold text-amber-800 mb-1.5">
-                Agente que realiza finalmente el turno
-            </label>
+    <div class="flex items-center gap-3 mb-3">
 
-            <select
-                id="swap-agent"
-                class="w-full text-sm border border-amber-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
-            </select>
-
+        <div class="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center">
+            <i class="fa-solid fa-arrow-right-arrow-left text-amber-600"></i>
         </div>
-
-
-        <!-- OBSERVACIONES -->
 
         <div>
 
-            <label class="block text-xs font-bold text-slate-600 mb-1.5">
-                Observaciones
+            <label class="block text-xs font-bold text-amber-800">
+                Servicio cedido
             </label>
 
-            <textarea
-                id="service-notes"
-                rows="2"
-                placeholder="Ej. Notificado por WhatsApp..."
-                class="w-full text-sm border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-amber-500 outline-none">
-            </textarea>
+            <p class="text-[10px] text-amber-700">
+                Selecciona el agente que realizará finalmente el turno.
+            </p>
 
         </div>
 
+    </div>
 
-        <!-- BOTÓN -->
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">
+        Agente que realiza finalmente el turno
+    </label>
 
-        <button
-            type="submit"
-            class="w-full bg-slate-900 text-white font-bold py-3.5 px-4 rounded-xl shadow active:scale-[0.98] transition flex items-center justify-center gap-2">
+    <select
+        id="swap-agent"
+        class="w-full text-sm border border-amber-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+    </select>
 
-            <i class="fa-solid fa-floppy-disk text-amber-400"></i>
+</div>
 
-            <span>
-                GUARDAR
-            </span>
 
-        </button>
+       <!-- OBSERVACIONES -->
+
+<div>
+
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">
+        Observaciones
+    </label>
+
+    <div class="relative">
+
+        <i class="fa-solid fa-note-sticky absolute left-3 top-3.5 text-slate-400 text-sm"></i>
+
+        <textarea
+            id="service-notes"
+            rows="2"
+            placeholder="Ej. Notificado por WhatsApp..."
+            class="w-full text-sm border border-slate-300 rounded-xl py-3 pl-10 pr-3 focus:ring-2 focus:ring-amber-500 outline-none resize-none"></textarea>
+
+    </div>
+
+</div>
+
+
+<!-- BOTÓN -->
+
+<div class="pt-2">
+
+    <button
+        type="submit"
+        class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl shadow-sm hover:shadow-md active:scale-[0.98] transition flex items-center justify-center gap-2">
+
+        <i class="fa-solid fa-floppy-disk text-amber-400"></i>
+
+        <span>
+            GUARDAR SERVICIO
+        </span>
+
+    </button>
+
+</div>
 
     </form>
 
@@ -636,7 +716,7 @@ currentUserRole = profile?.role || 'viewer';
                 class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl"
             >
                 <i class="fa-brands fa-whatsapp mr-2"></i>
-                AVISAR AL AGENTE ASIGNADO
+                AVISAR AL AGENTE
             </button>
 
         </div>
@@ -661,7 +741,7 @@ currentUserRole = profile?.role || 'viewer';
                 class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl"
             >
                 <i class="fa-brands fa-whatsapp mr-2"></i>
-                AVISAR AL SIGUIENTE AGENTE
+                AVISAR AL AGENTE
             </button>
 
         </div>
@@ -759,14 +839,121 @@ currentUserRole = profile?.role || 'viewer';
     </button>
 
 
-    <div
-        id="agents-panel"
-        class="hidden border-t border-slate-200 p-3">
+   <div
+    id="agents-panel"
+    class="hidden border-t border-slate-200 p-3">
 
-        <div
-            id="wheel-mobile-list"
-            class="space-y-2">
+    <!-- BOTÓN AÑADIR AGENTE -->
+
+    <button
+        type="button"
+        id="add-agent-button"
+        class="w-full mb-3 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm py-3 px-4 rounded-xl transition shadow-sm">
+
+        <i class="fa-solid fa-user-plus"></i>
+
+        Añadir agente
+
+    </button>
+
+
+    <!-- FORMULARIO NUEVO AGENTE -->
+
+<div
+    id="add-agent-form"
+    class="hidden mb-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+
+    <div class="flex items-center gap-2 mb-3">
+
+        <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+            <i class="fa-solid fa-user-plus text-amber-600 text-sm"></i>
         </div>
+
+        <div>
+
+            <p class="text-sm font-bold text-slate-800">
+                Nuevo agente
+            </p>
+
+            <p class="text-[10px] text-slate-500">
+                Añade un agente al orden de servicio
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- TIP -->
+
+    <div class="mb-3">
+
+        <label class="block text-xs font-bold text-slate-600 mb-1.5">
+            TIP / Identificador
+        </label>
+
+        <input
+            type="text"
+            id="new-agent-id"
+            placeholder="Ej. 45"
+            class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+
+    </div>
+
+
+    <!-- NOMBRE -->
+
+    <div class="mb-3">
+
+        <label class="block text-xs font-bold text-slate-600 mb-1.5">
+            Nombre
+        </label>
+
+        <input
+            type="text"
+            id="new-agent-name"
+            placeholder="Nombre del agente"
+            class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+
+    </div>
+
+
+    <!-- BOTONES -->
+
+    <div class="grid grid-cols-2 gap-2">
+
+        <button
+            type="button"
+            id="cancel-add-agent"
+            class="bg-white border border-slate-300 text-slate-700 font-bold text-sm py-3 rounded-xl hover:bg-slate-50 transition">
+
+            Cancelar
+
+        </button>
+
+
+        <button
+            type="button"
+            id="save-new-agent"
+            class="bg-slate-900 text-white font-bold text-sm py-3 rounded-xl hover:bg-slate-800 transition">
+
+            <i class="fa-solid fa-user-plus mr-1 text-amber-400"></i>
+            Añadir
+
+        </button>
+
+    </div>
+
+</div>
+
+    <!-- LISTA DE AGENTES -->
+
+    <div
+        id="wheel-mobile-list"
+        class="space-y-2">
+    </div>
+
+</div>
 
     </div>
 
@@ -1043,6 +1230,9 @@ let history = [];
 
 let lastWhatsAppAssignedMessage = '';
 let lastWhatsAppNextMessage = '';
+let lastWhatsAppSkippedMessage = '';
+let lastWhatsAppCededMessage = '';
+let lastWhatsAppCededAgent = null;
 
 async function saveState() {
 
@@ -1295,6 +1485,7 @@ function toggleAgentsPanel() {
 /* =========================================================
    MOSTRAR AGENTE DE CESIÓN
 ========================================================= */
+
 
 function toggleSwapAgentField() {
 
@@ -1922,7 +2113,8 @@ function prepareWhatsAppNotifications(
     date,
     shift,
     reason,
-    noticeType
+    noticeType,
+    status
 ) {
 
     if (!assignedAgent) {
@@ -1942,6 +2134,75 @@ Hola ${assignedAgent.id}, se te ha asignado el siguiente servicio.
 
 Consulta la aplicación para más detalles.`;
 
+if (status === 'Salto Justificado') {
+
+    lastWhatsAppSkippedMessage =
+`⚠️ AVISO DE SALTO JUSTIFICADO
+
+Hola ${assignedAgent.id}.
+
+En esta ocasión se ha producido un salto en el turno y no te corresponde realizar este servicio.
+
+📅 Fecha: ${formatDate(date)}
+🕐 Turno: ${getShortShift(shift)}
+📋 Motivo: ${reason || 'No indicado'}
+
+El motivo del salto ha quedado registrado en la aplicación.
+Al ser justificado mantienes tu posición en la rueda y volverás a ser el siguiente agente en la rueda cuando haya que cubrir un servicio.
+
+Consulta la aplicación para más detalles.`;
+
+} else {
+
+    lastWhatsAppSkippedMessage = '';
+
+}
+
+if (status === 'Cedido') {
+
+    lastWhatsAppAssignedMessage =
+`🔄 AVISO DE SERVICIO CEDIDO
+
+Hola ${assignedAgent.id}.
+
+Has cedido el siguiente servicio a ${lastWhatsAppCededAgent.id}.
+Ten en cuenta que ahora pasas al final de la rueda otra vez.
+
+📅 Fecha: ${formatDate(date)}
+🕐 Turno: ${getShortShift(shift)}
+📋 Motivo: ${reason || 'No indicado'}
+
+El servicio ha quedado registrado en la aplicación.`;
+
+    const targetAgent =
+    lastWhatsAppCededAgent;
+
+    if (targetAgent) {
+
+        lastWhatsAppCededMessage =
+`🔄 AVISO DE SERVICIO CEDIDO
+
+Hola ${targetAgent.id}.
+
+El servicio que correspondía al agente ${assignedAgent.id} te lo ha cedido según habéis acordado y te corresponde realizarlo.
+
+📅 Fecha: ${formatDate(date)}
+🕐 Turno: ${getShortShift(shift)}
+📋 Motivo: ${reason || 'No indicado'}
+
+Consulta la aplicación para más detalles.`;
+
+    } else {
+
+        lastWhatsAppCededMessage = '';
+
+    }
+
+} else {
+
+    lastWhatsAppCededMessage = '';
+
+}
 
     if (nextAgent) {
 
@@ -1950,9 +2211,10 @@ Consulta la aplicación para más detalles.`;
 
 Hola ${nextAgent.id}.
 
-Informárte que el próximo servicio a cubrir que se necesario cubrir te tocará a ti.
+En caso de necesidad de cubrir un servicio, serías el siguiente agente al que le correspondería.
 
-Te avisaré.`;
+Te avisaré.
+Consulta la aplicación para más detalles.`;
 
     } else {
 
@@ -1967,6 +2229,44 @@ Te avisaré.`;
         `${assignedAgent.id} — ${assignedAgent.name}`;
 
 
+        if (status === 'Salto Justificado') {
+
+    document.getElementById(
+        'whatsapp-assigned-agent'
+    ).innerText =
+        `${assignedAgent.id} — ${assignedAgent.name} (AGENTE SALTADO)`;
+
+} else if (status === 'Cedido') {
+
+    document.getElementById(
+        'whatsapp-assigned-agent'
+    ).innerText =
+        `${assignedAgent.id} — ${assignedAgent.name} (AGENTE QUE CEDE)`;
+
+} else {
+
+    document.getElementById(
+        'whatsapp-assigned-agent'
+    ).innerText =
+        `${assignedAgent.id} — ${assignedAgent.name}`;
+
+}
+
+
+    if (status === 'Cedido') {
+
+    const targetAgent =
+    lastWhatsAppCededAgent;
+
+    document.getElementById(
+        'whatsapp-next-agent'
+    ).innerText =
+        targetAgent
+            ? `${targetAgent.id} — ${targetAgent.name} (AGENTE QUE RECIBE)`
+            : 'No disponible';
+
+} else {
+
     document.getElementById(
         'whatsapp-next-agent'
     ).innerText =
@@ -1974,6 +2274,35 @@ Te avisaré.`;
             ? `${nextAgent.id} — ${nextAgent.name}`
             : 'No disponible';
 
+}
+
+const assignedButton =
+    document.querySelector(
+        '#whatsapp-assigned-agent + button'
+    );
+
+    const nextButton =
+    document.querySelector(
+        '#whatsapp-next-agent + button'
+    );
+
+if (nextButton) {
+
+    nextButton.innerHTML =
+        status === 'Cedido'
+            ? '<i class="fa-brands fa-whatsapp mr-2"></i> AVISAR AL AGENTE QUE RECIBE'
+            : '<i class="fa-brands fa-whatsapp mr-2"></i> AVISAR AL SIGUIENTE AGENTE';
+
+}
+
+if (assignedButton) {
+
+    assignedButton.innerHTML =
+        status === 'Salto Justificado'
+            ? '<i class="fa-brands fa-whatsapp mr-2"></i> AVISAR DEL SALTO AL AGENTE'
+            : '<i class="fa-brands fa-whatsapp mr-2"></i> AVISAR AL AGENTE';
+
+}
 
     document
         .getElementById('whatsapp-notifications')
@@ -1983,17 +2312,19 @@ Te avisaré.`;
 
 function openWhatsAppAssigned() {
 
-    if (!lastWhatsAppAssignedMessage) {
+    const message =
+        lastWhatsAppSkippedMessage ||
+        lastWhatsAppAssignedMessage;
+
+    if (!message) {
         return;
     }
-
 
     const url =
         'https://wa.me/?text=' +
         encodeURIComponent(
-            lastWhatsAppAssignedMessage
+            message
         );
-
 
     window.open(
         url,
@@ -2004,17 +2335,19 @@ function openWhatsAppAssigned() {
 
 function openWhatsAppNext() {
 
-    if (!lastWhatsAppNextMessage) {
+    const message =
+        lastWhatsAppCededMessage ||
+        lastWhatsAppNextMessage;
+
+    if (!message) {
         return;
     }
-
 
     const url =
         'https://wa.me/?text=' +
         encodeURIComponent(
-            lastWhatsAppNextMessage
+            message
         );
-
 
     window.open(
         url,
@@ -2365,9 +2698,7 @@ else if (
                CEDIDO
             ------------------------------------------------ */
 
-            else if (
-                status ===
-                'Cedido'
+            else if ( status ==='Cedido'
             ) {
 
                 currentAgent.swapped++;
@@ -2384,6 +2715,7 @@ else if (
                         a => a.id === targetTip
                     );
 
+                lastWhatsAppCededAgent = targetAgent;
 
                 if (targetAgent) {
 
@@ -2536,17 +2868,37 @@ if (!stateSaved) {
 render();
 
 
+render();
+
+
 const nextAgent =
     agents[activeAgentIndex] || null;
 
 
+let whatsappNextAgent =
+    nextAgent;
+
+
+if (status === 'Cedido') {
+
+    const targetTip =
+        document.getElementById('swap-agent').value;
+
+    whatsappNextAgent =
+        agents.find(
+            agent => agent.id === targetTip
+        ) || null;
+}
+
+
 prepareWhatsAppNotifications(
     currentAgent,
-    nextAgent,
+    whatsappNextAgent,
     date,
     shift,
     reason,
-    noticeType
+    noticeType,
+    status
 );
 
         }
