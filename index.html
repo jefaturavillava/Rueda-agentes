@@ -750,53 +750,89 @@ currentUserRole = profile?.role || 'viewer';
 
 </section>
 
+    <!-- =========================================================
+        HISTORIAL PLEGABLE
+    ========================================================= -->
 
-<!-- =========================================================
-     HISTORIAL 
-========================================================= -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
 
-<section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <!-- CABECERA -->
 
+        <button
+            type="button"
+            onclick="toggleHistoryPanel()"
+            class="w-full p-4 flex items-center justify-between text-left">
 
-    <div class="flex items-center justify-between mb-3 pb-3 border-b">
+            <div class="flex items-center gap-2">
 
-        <h2 class="text-xs font-bold uppercase tracking-wider">
+                <i class="fa-solid fa-list-check text-slate-600"></i>
 
-            <i class="fa-solid fa-list-check text-slate-600 mr-2"></i>
+                <div>
 
-            Historial
+                    <h2 class="text-sm font-bold uppercase tracking-wider">
+                        Historial
+                    </h2>
 
-        </h2>
+                    <p class="text-[10px] text-slate-400 mt-0.5">
+                        Servicios registrados
+                    </p>
 
-        <span
-            id="total-records-count"
-            class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full">
-            0 Registros
-        </span>
+                </div>
 
-    </div>
-
-
-    <div
-        id="history-mobile-list"
-        class="space-y-3">
-    </div>
+            </div>
 
 
-    <div
-        id="history-empty"
-        class="text-center py-8 text-slate-400 text-xs">
+            <div
+                id="history-toggle-icon"
+                class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
 
-        <i class="fa-solid fa-inbox text-2xl mb-2"></i>
+                <i class="fa-solid fa-plus text-slate-600"></i>
 
-        <p>
-            Todavía no hay registros.
-        </p>
+            </div>
 
-    </div>
+        </button>
 
-</section>
 
+        <!-- CONTENIDO DEL HISTORIAL -->
+
+        <div
+            id="history-panel"
+            class="hidden border-t border-slate-200 p-4">
+
+
+            <div class="flex items-center justify-end mb-3 pb-3 border-b">
+
+                <span
+                    id="total-records-count"
+                    class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full">
+                    0 Registros
+                </span>
+
+            </div>
+
+
+            <div
+                id="history-mobile-list"
+                class="space-y-3">
+            </div>
+
+
+            <div
+                id="history-empty"
+                class="text-center py-8 text-slate-400 text-xs">
+
+                <i class="fa-solid fa-inbox text-2xl mb-2"></i>
+
+                <p>
+                    Todavía no hay registros.
+                </p>
+
+            </div>
+
+
+        </div>
+
+    </section>
 
 
 <!-- =========================================================
@@ -843,25 +879,41 @@ currentUserRole = profile?.role || 'viewer';
     id="agents-panel"
     class="hidden border-t border-slate-200 p-3">
 
+    
+
+
+    
+
+
+
+    <!-- LISTA DE AGENTES -->
+
+    <div
+        id="wheel-mobile-list"
+        class="space-y-2">
+    </div>
+
     <!-- BOTÓN AÑADIR AGENTE -->
 
     <button
         type="button"
         id="add-agent-button"
-        class="w-full mb-3 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm py-3 px-4 rounded-xl transition shadow-sm">
+        class="w-full mt-3 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm py-3 px-4 rounded-xl transition shadow-sm">
 
         <i class="fa-solid fa-user-plus"></i>
 
         Añadir agente
 
     </button>
+ 
+
 
 
     <!-- FORMULARIO NUEVO AGENTE -->
 
 <div
     id="add-agent-form"
-    class="hidden mb-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+    class="hidden mt-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
 
     <div class="flex items-center gap-2 mb-3">
 
@@ -889,13 +941,13 @@ currentUserRole = profile?.role || 'viewer';
     <div class="mb-3">
 
         <label class="block text-xs font-bold text-slate-600 mb-1.5">
-            TIP / Identificador
+            Nombre de pila
         </label>
 
         <input
             type="text"
             id="new-agent-id"
-            placeholder="Ej. 45"
+            placeholder="Ej. Daniel"
             class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
 
     </div>
@@ -906,19 +958,18 @@ currentUserRole = profile?.role || 'viewer';
     <div class="mb-3">
 
         <label class="block text-xs font-bold text-slate-600 mb-1.5">
-            Nombre
+            NIP
         </label>
 
         <input
             type="text"
             id="new-agent-name"
-            placeholder="Nombre del agente"
+            placeholder="NIP del agente"
             class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
 
     </div>
 
-
-    <!-- BOTONES -->
+<!-- BOTONES -->
 
     <div class="grid grid-cols-2 gap-2">
 
@@ -944,18 +995,11 @@ currentUserRole = profile?.role || 'viewer';
 
     </div>
 
-</div>
 
-    <!-- LISTA DE AGENTES -->
-
-    <div
-        id="wheel-mobile-list"
-        class="space-y-2">
-    </div>
-
-</div>
 
     </div>
+
+   
 
 </section>
 
@@ -979,6 +1023,7 @@ currentUserRole = profile?.role || 'viewer';
 
 </section>
 
+</div>
 
 </main>
 
@@ -1483,6 +1528,38 @@ function toggleAgentsPanel() {
 
 
 /* =========================================================
+   PANEL HISTORIAL
+========================================================= */
+
+function toggleHistoryPanel() {
+
+    const panel =
+        document.getElementById('history-panel');
+
+    const icon =
+        document.getElementById('history-toggle-icon');
+
+    if (!panel || !icon) return;
+
+    if (panel.classList.contains('hidden')) {
+
+        panel.classList.remove('hidden');
+
+        icon.innerHTML =
+            '<i class="fa-solid fa-minus text-slate-600"></i>';
+
+    } else {
+
+        panel.classList.add('hidden');
+
+        icon.innerHTML =
+            '<i class="fa-solid fa-plus text-slate-600"></i>';
+
+    }
+
+}
+
+/* =========================================================
    MOSTRAR AGENTE DE CESIÓN
 ========================================================= */
 
@@ -1609,14 +1686,17 @@ function editAgentName(tip) {
     }
 
 }
-
-
 /* =========================================================
    ELIMINAR AGENTE
 ========================================================= */
 
-function removeAgent(tip) {
+async function removeAgent(tip) {
+
     if (currentUserRole !== 'admin') return;
+
+
+    /* NO PERMITIR DEJAR LA RUEDA VACÍA */
+
     if (agents.length <= 1) {
 
         alert(
@@ -1624,16 +1704,21 @@ function removeAgent(tip) {
         );
 
         return;
-
     }
 
 
+    /* BUSCAR AGENTE */
+
     const agent =
-        agents.find(a => a.id === tip);
+        agents.find(
+            a => a.id === tip
+        );
 
 
     if (!agent) return;
 
+
+    /* CONFIRMAR */
 
     const confirmed =
         confirm(
@@ -1643,6 +1728,32 @@ function removeAgent(tip) {
 
     if (!confirmed) return;
 
+
+    /* ELIMINAR DE SUPABASE */
+
+    const { error } =
+        await supabaseClient
+            .from('agents')
+            .delete()
+            .eq('id', agent.supabaseId);
+
+
+    if (error) {
+
+        console.error(
+            'Error eliminando agente de Supabase:',
+            error
+        );
+
+        alert(
+            'No se ha podido eliminar el agente de Supabase.'
+        );
+
+        return;
+    }
+
+
+    /* ELIMINAR DE LA APLICACIÓN */
 
     const index =
         agents.findIndex(
@@ -1655,6 +1766,8 @@ function removeAgent(tip) {
         agents.splice(index, 1);
 
 
+        /* CORREGIR POSICIÓN ACTIVA */
+
         if (
             activeAgentIndex >=
             agents.length
@@ -1665,14 +1778,20 @@ function removeAgent(tip) {
         }
 
 
+        /* GUARDAR ESTADO Y ACTUALIZAR PANTALLA */
+
         saveState();
 
         render();
 
     }
 
-}
 
+    alert(
+        `Agente ${tip} eliminado correctamente.`
+    );
+
+}
 
 /* =========================================================
    RENDER PRINCIPAL
@@ -4173,6 +4292,224 @@ if (!pdfLogoAdded) {
 }
 
 
+/* =========================================================
+   AÑADIR AGENTE — INTERFAZ
+========================================================= */
+
+const addAgentButton =
+    document.getElementById('add-agent-button');
+
+const addAgentForm =
+    document.getElementById('add-agent-form');
+
+const cancelAddAgent =
+    document.getElementById('cancel-add-agent');
+
+
+if (addAgentButton && addAgentForm) {
+
+    addAgentButton.addEventListener('click', function () {
+
+        addAgentForm.classList.toggle('hidden');
+
+    });
+
+}
+
+
+if (cancelAddAgent && addAgentForm) {
+
+    cancelAddAgent.addEventListener('click', function () {
+
+        addAgentForm.classList.add('hidden');
+
+    });
+
+}
+
+
+/* =========================================================
+   AÑADIR NUEVO AGENTE
+========================================================= */
+
+const saveNewAgentButton =
+    document.getElementById('save-new-agent');
+
+
+if (saveNewAgentButton) {
+
+    saveNewAgentButton.addEventListener('click', async function () {
+
+        const tipInput =
+            document.getElementById('new-agent-id');
+
+        const nameInput =
+            document.getElementById('new-agent-name');
+
+        const firstName =
+            tipInput.value.trim();
+
+        const nip =
+            nameInput.value.trim();
+
+
+        /* COMPROBAR DATOS */
+
+        if (!firstName || !nip) {
+
+            alert(
+                'Introduce el nombre de pila y el NIP del agente.'
+            );
+
+            return;
+        }
+
+
+        /* COMPROBAR SI YA EXISTE */
+
+        const { data: existingAgent, error: checkError } =
+            await supabaseClient
+                .from('agents')
+                .select('id')
+                .eq('name', nip)
+                .maybeSingle();
+
+
+        if (checkError) {
+
+            console.error(
+                'Error comprobando agente:',
+                checkError
+            );
+
+            alert(
+                'No se ha podido comprobar si el agente ya existe.'
+            );
+
+            return;
+        }
+
+
+        if (existingAgent) {
+
+            alert(
+                `El NIP ${nip} ya existe.`
+            );
+
+            return;
+        }
+
+
+        /* BUSCAR ÚLTIMA POSICIÓN */
+
+        const { data: lastAgent, error: positionError } =
+            await supabaseClient
+                .from('agents')
+                .select('position')
+                .order('position', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+
+        if (positionError) {
+
+            console.error(
+                'Error obteniendo posición:',
+                positionError
+            );
+
+            alert(
+                'No se ha podido obtener la posición del nuevo agente.'
+            );
+
+            return;
+        }
+
+
+        const newPosition =
+            lastAgent
+                ? Number(lastAgent.position) + 1
+                : 1;
+
+
+        /* INSERTAR AGENTE */
+
+        const { error: insertError } =
+            await supabaseClient
+                .from('agents')
+                .insert({
+
+                    tip: firstName,
+
+                    name: nip,
+
+                    position: newPosition,
+
+                    done: 0,
+
+                    swapped: 0,
+
+                    skipped: 0,
+
+                    active: true
+
+                });
+
+
+        if (insertError) {
+
+            console.error(
+                'Error añadiendo agente:',
+                insertError
+            );
+
+            alert(
+                'No se ha podido añadir el agente.'
+            );
+
+            return;
+        }
+
+
+        /* LIMPIAR FORMULARIO */
+
+        tipInput.value = '';
+
+        nameInput.value = '';
+
+
+        /* CERRAR FORMULARIO */
+
+        const addAgentForm =
+            document.getElementById('add-agent-form');
+
+        if (addAgentForm) {
+
+            addAgentForm.classList.add('hidden');
+
+        }
+
+
+        /* RECARGAR AGENTES */
+
+        const loaded =
+            await loadAgentsFromSupabase();
+
+
+        if (loaded) {
+
+            render();
+
+        }
+
+
+        alert(
+            `Agente ${firstName} — NIP ${nip} añadido correctamente.`
+        );
+
+    });
+
+}
 
  /* =========================================================
    ARRANQUE
