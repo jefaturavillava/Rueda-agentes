@@ -263,6 +263,12 @@ currentUserRole = profile?.role || 'viewer';
 
         </form>
 
+
+      
+</section>
+
+
+
     </div>
 
 </div>
@@ -599,6 +605,70 @@ currentUserRole = profile?.role || 'viewer';
 
 </section>
 
+  <!-- AVISOS WHATSAPP -->
+<section
+    id="whatsapp-notifications"
+    class="hidden mt-6 bg-green-50 border border-green-200 rounded-2xl p-5"
+>
+
+    <h3 class="text-lg font-bold text-green-800 mb-4">
+        Avisos por WhatsApp
+    </h3>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <!-- AGENTE ASIGNADO -->
+
+        <div class="bg-white border border-green-200 rounded-xl p-4">
+
+            <p class="text-sm text-gray-600 mb-1">
+                Agente asignado:
+            </p>
+
+            <p
+                id="whatsapp-assigned-agent"
+                class="font-semibold text-gray-900"
+            ></p>
+
+            <button
+                type="button"
+                onclick="openWhatsAppAssigned()"
+                class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl"
+            >
+                <i class="fa-brands fa-whatsapp mr-2"></i>
+                AVISAR AL AGENTE ASIGNADO
+            </button>
+
+        </div>
+
+
+        <!-- SIGUIENTE AGENTE -->
+
+        <div class="bg-white border border-green-200 rounded-xl p-4">
+
+            <p class="text-sm text-gray-600 mb-1">
+                Siguiente agente:
+            </p>
+
+            <p
+                id="whatsapp-next-agent"
+                class="font-semibold text-gray-900"
+            ></p>
+
+            <button
+                type="button"
+                onclick="openWhatsAppNext()"
+                class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl"
+            >
+                <i class="fa-brands fa-whatsapp mr-2"></i>
+                AVISAR AL SIGUIENTE AGENTE
+            </button>
+
+        </div>
+
+    </div>
+
+</section>
 
 
 <!-- =========================================================
@@ -971,6 +1041,8 @@ let isSkipMode = false;
 
 let history = [];
 
+let lastWhatsAppAssignedMessage = '';
+let lastWhatsAppNextMessage = '';
 
 async function saveState() {
 
@@ -1840,6 +1912,122 @@ sortedHistory.forEach(item => {
 }
 
 
+/* =========================================================
+   WHATSAPP
+========================================================= */
+
+function prepareWhatsAppNotifications(
+    assignedAgent,
+    nextAgent,
+    date,
+    shift,
+    reason,
+    noticeType
+) {
+
+    if (!assignedAgent) {
+        return;
+    }
+
+
+   lastWhatsAppAssignedMessage =
+`🔔 AVISO DE SERVICIO
+
+${assignedAgent.id}
+
+Se te ha asignado un servicio.
+
+📅 Fecha: ${formatDate(date)}
+🕐 Turno: ${getShortShift(shift)}
+📋 Motivo: ${reason || 'No indicado'}
+⏰ Aviso: ${noticeType}
+
+Consulta la aplicación para más detalles.`;
+
+
+    if (nextAgent) {
+
+        lastWhatsAppNextMessage =
+`👀 PRÓXIMO AGENTE EN EL TURNO
+
+Hola ${nextAgent.name}.
+
+Eres el siguiente agente en el turno.
+
+El próximo servicio que corresponda al turno será para ti.
+
+Estate pendiente.`;
+
+    } else {
+
+        lastWhatsAppNextMessage = '';
+
+    }
+
+
+    document.getElementById(
+        'whatsapp-assigned-agent'
+    ).innerText =
+        `${assignedAgent.id} — ${assignedAgent.name}`;
+
+
+    document.getElementById(
+        'whatsapp-next-agent'
+    ).innerText =
+        nextAgent
+            ? `${nextAgent.id} — ${nextAgent.name}`
+            : 'No disponible';
+
+
+    document
+        .getElementById('whatsapp-notifications')
+        .classList.remove('hidden');
+}
+
+
+function openWhatsAppAssigned() {
+
+    if (!lastWhatsAppAssignedMessage) {
+        return;
+    }
+
+
+    const url =
+        'https://wa.me/?text=' +
+        encodeURIComponent(
+            lastWhatsAppAssignedMessage
+        );
+
+
+    window.open(
+        url,
+        '_blank'
+    );
+}
+
+
+function openWhatsAppNext() {
+
+    if (!lastWhatsAppNextMessage) {
+        return;
+    }
+
+
+    const url =
+        'https://wa.me/?text=' +
+        encodeURIComponent(
+            lastWhatsAppNextMessage
+        );
+
+
+    window.open(
+        url,
+        '_blank'
+    );
+}
+
+
+
 
 /* =========================================================
    FORMATO FECHA
@@ -2337,9 +2525,33 @@ if (!historySaved) {
             setNowNoticeDatetime();
 
 
-            saveState();
+            const stateSaved = await saveState();
 
-            render();
+if (!stateSaved) {
+
+    alert(
+        'El servicio se ha procesado, pero no se pudo guardar el estado del turno.'
+    );
+
+    return;
+
+}
+
+render();
+
+
+const nextAgent =
+    agents[activeAgentIndex] || null;
+
+
+prepareWhatsAppNotifications(
+    currentAgent,
+    nextAgent,
+    date,
+    shift,
+    reason,
+    noticeType
+);
 
         }
     );
