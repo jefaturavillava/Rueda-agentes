@@ -1039,8 +1039,11 @@ currentUserRole = profile?.role || 'viewer';
    CONFIGURACIÓN INICIAL
 ========================================================= */
 
+const INITIAL_AGENT_TIP = 'A-37';
+
 const defaultTips = [
 
+    'A-37',
     'C-8',
     'C-14',
     'A-16',
@@ -1055,7 +1058,6 @@ const defaultTips = [
     'A-33',
     'A-34',
     'A-35',
-    'A-37',
     'A-38',
     'A-39'
 
@@ -3393,7 +3395,16 @@ async function resetApplication() {
         }
     );
 
-    activeAgentIndex = 0;
+    const initialAgentIndex =
+        agents.findIndex(
+            agent => agent.id === INITIAL_AGENT_TIP
+        );
+
+    activeAgentIndex =
+        initialAgentIndex !== -1
+            ? initialAgentIndex
+            : 0;
+
     isSkipMode = false;
 
     const stateSaved =
