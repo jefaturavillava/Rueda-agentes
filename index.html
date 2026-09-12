@@ -1039,11 +1039,8 @@ currentUserRole = profile?.role || 'viewer';
    CONFIGURACIÓN INICIAL
 ========================================================= */
 
-const INITIAL_AGENT_TIP = 'A-37';
-
 const defaultTips = [
 
-    'A-37',
     'C-8',
     'C-14',
     'A-16',
@@ -1058,6 +1055,7 @@ const defaultTips = [
     'A-33',
     'A-34',
     'A-35',
+    'A-37',
     'A-38',
     'A-39'
 
@@ -1256,6 +1254,17 @@ async function loadWheelStateFromSupabase() {
 
     activeAgentIndex =
         agents.indexOf(activeAgent);
+
+    /* Si Supabase apunta a un agente inhabilitado, usar el siguiente habilitado */
+    if (activeAgent.active === false) {
+
+        const nextIndex =
+            findNextActiveIndex(activeAgentIndex);
+
+        if (nextIndex !== -1) {
+            activeAgentIndex = nextIndex;
+        }
+    }
 
     isSkipMode =
         data.is_skip_mode ?? false;
@@ -1689,6 +1698,118 @@ function editAgentName(tip) {
 
 }
 /* =========================================================
+   INHABILITAR / HABILITAR AGENTE
+========================================================= */
+
+async function toggleAgentActive(tip) {
+
+    if (currentUserRole !== 'admin') {
+        alert('No tienes permisos para realizar esta acción.');
+        return;
+    }
+
+    const agent = agents.find(a => a.id === tip);
+
+    if (!agent) return;
+
+    const willDisable = agent.active !== false;
+
+    /* No permitir dejar a todos los agentes inhabilitados */
+    if (willDisable) {
+
+        const activeAgents = agents.filter(
+            a => a.active !== false
+        );
+
+        if (activeAgents.length <= 1) {
+            alert('No se puede inhabilitar al último agente habilitado de la rueda.');
+            return;
+        }
+    }
+
+    const actionText =
+        willDisable ? 'inhabilitar' : 'habilitar';
+
+    const confirmed = confirm(
+        `¿Seguro que quieres ${actionText} al agente ${tip}?`
+    );
+
+    if (!confirmed) return;
+
+    agent.active = !willDisable;
+
+    /*
+       Si se inhabilita el agente que estaba en el puesto actual,
+       buscamos automáticamente el siguiente agente habilitado.
+    */
+    if (willDisable && activeAgentIndex >= 0) {
+
+        const currentAgent = agents[activeAgentIndex];
+
+        if (currentAgent && currentAgent.id === tip) {
+
+            const nextIndex = findNextActiveIndex(
+                activeAgentIndex
+            );
+
+            if (nextIndex === -1) {
+                agent.active = true;
+                alert('No se ha podido encontrar otro agente habilitado.');
+                return;
+            }
+
+            activeAgentIndex = nextIndex;
+            isSkipMode = false;
+        }
+    }
+
+    const saved = await saveState();
+
+    if (!saved) {
+
+        /* Recargar para no dejar la aplicación en un estado distinto de Supabase */
+        await loadAgentsFromSupabase();
+        await loadWheelStateFromSupabase();
+
+        render();
+
+        alert(
+            'No se pudo guardar el cambio en Supabase.'
+        );
+
+        return;
+    }
+
+    render();
+
+    alert(
+        willDisable
+            ? `Agente ${tip} inhabilitado correctamente.`
+            : `Agente ${tip} habilitado correctamente.`
+    );
+}
+
+
+/* Devuelve el siguiente agente habilitado a partir de una posición */
+function findNextActiveIndex(startIndex) {
+
+    if (!agents.length) return -1;
+
+    for (let step = 1; step <= agents.length; step++) {
+
+        const index =
+            (startIndex + step) % agents.length;
+
+        if (agents[index].active !== false) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+
+/* =========================================================
    ELIMINAR AGENTE
 ========================================================= */
 
@@ -1818,8 +1939,24 @@ function render() {
     }
 
 
+    /* Si el agente actual está inhabilitado, avanzar al siguiente habilitado */
+    if (agents[activeAgentIndex]?.active === false) {
+
+        const nextIndex =
+            findNextActiveIndex(activeAgentIndex);
+
+        if (nextIndex !== -1) {
+            activeAgentIndex = nextIndex;
+            isSkipMode = false;
+        }
+    }
+
     const activeAgent =
         agents[activeAgentIndex];
+
+    if (!activeAgent) {
+        return;
+    }
 
 
     /* -------------------------------------------------------
@@ -1880,8 +2017,9 @@ function render() {
 
     agents
         .filter(
-            (_, index) =>
-                index !== activeAgentIndex
+            (agent, index) =>
+                index !== activeAgentIndex &&
+                agent.active !== false
         )
         .forEach(agent => {
 
@@ -1925,7 +2063,9 @@ function render() {
 
             card.className =
                 `p-3 rounded-xl border flex items-center justify-between ${
-                    isCurrent
+                    agent.active === false
+                    ? 'bg-slate-100 border-slate-300 opacity-60'
+                    : isCurrent
                     ? isSkipMode
                         ? 'bg-blue-50 border-blue-300'
                         : 'bg-amber-50 border-amber-300'
@@ -1960,6 +2100,12 @@ function render() {
 
                             ${agent.name}
 
+                            ${
+                                agent.active === false
+                                    ? '<span class="ml-2 text-[9px] font-bold text-red-600 uppercase">INHABILITADO</span>'
+                                    : ''
+                            }
+
                         </div>
 
                         <div class="flex gap-2 mt-1 text-[10px]">
@@ -1993,6 +2139,15 @@ function render() {
 
                     </button>
 
+
+                    <button
+                        onclick="toggleAgentActive('${agent.id}')"
+                        title="${agent.active === false ? 'Habilitar agente' : 'Inhabilitar agente'}"
+                        class="p-2 ${agent.active === false ? 'text-emerald-600 hover:text-emerald-800' : 'text-slate-400 hover:text-amber-600'}">
+
+                        <i class="fa-solid ${agent.active === false ? 'fa-user-check' : 'fa-user-slash'}"></i>
+
+                    </button>
 
                     <button
                         onclick="removeAgent('${agent.id}')"
@@ -3395,16 +3550,7 @@ async function resetApplication() {
         }
     );
 
-    const initialAgentIndex =
-        agents.findIndex(
-            agent => agent.id === INITIAL_AGENT_TIP
-        );
-
-    activeAgentIndex =
-        initialAgentIndex !== -1
-            ? initialAgentIndex
-            : 0;
-
+    activeAgentIndex = 0;
     isSkipMode = false;
 
     const stateSaved =
