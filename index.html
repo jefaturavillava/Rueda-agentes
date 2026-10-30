@@ -886,6 +886,35 @@ async function loginApplication() {
         class="space-y-2">
     </div>
 
+    <!-- AJUSTAR EL SIGUIENTE AGENTE (SOLO ADMINISTRACIÓN) -->
+    <div
+        id="manual-next-agent-panel"
+        class="hidden mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+
+        <div class="flex items-center gap-2 mb-2">
+            <i class="fa-solid fa-arrow-rotate-right text-blue-700"></i>
+            <h3 class="text-sm font-bold text-blue-900">Ajustar siguiente agente</h3>
+        </div>
+
+        <p class="text-[11px] text-blue-800 mb-3">
+            Permite corregir manualmente la posición de la rueda sin modificar el historial ni los contadores. El agente elegido pasará al primer puesto y los demás conservarán su orden relativo.
+        </p>
+
+        <div class="space-y-2">
+            <select
+                id="manual-next-agent-select"
+                class="w-full text-sm border border-blue-300 rounded-xl p-3 bg-white">
+            </select>
+
+            <button
+                type="button"
+                onclick="setNextAgentManually()"
+                class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm py-3 px-4 rounded-xl">
+                <i class="fa-solid fa-check mr-2"></i>ESTABLECER COMO SIGUIENTE
+            </button>
+        </div>
+    </div>
+
     <!-- BOTÓN AÑADIR AGENTE -->
 
     <button
@@ -1449,7 +1478,9 @@ async function saveHistoryRecord(record) {
                     normalizedRecord.notice_type,
 
                 notes:
-                    normalizedRecord.notes,
+                    normalizedRecord.wheel_state_before
+                        ? encodeHistoryNotes(normalizedRecord.notes, normalizedRecord.wheel_state_before)
+                        : normalizedRecord.notes,
 
                 notice_datetime:
                     normalizedRecord.notice_datetime
@@ -1946,6 +1977,77 @@ async function removeAgent(tip) {
 }
 
 /* =========================================================
+   AJUSTE MANUAL DEL SIGUIENTE AGENTE
+========================================================= */
+
+function renderManualNextAgentSelector() {
+    const panel = document.getElementById('manual-next-agent-panel');
+    const select = document.getElementById('manual-next-agent-select');
+    if (!panel || !select) return;
+
+    panel.classList.toggle('hidden', currentUserRole !== 'admin');
+    select.innerHTML = '';
+
+    const currentTip = agents[activeAgentIndex]?.id;
+    agents.filter(agent => agent.active !== false).forEach(agent => {
+        const option = document.createElement('option');
+        option.value = agent.id;
+        option.textContent = `${agent.id} — ${agent.name}`;
+        option.selected = agent.id === currentTip;
+        select.appendChild(option);
+    });
+}
+
+async function setNextAgentManually() {
+    if (currentUserRole !== 'admin') {
+        alert('No tienes permisos para realizar esta acción.');
+        return;
+    }
+
+    if (hasPendingService()) {
+        alert('No puedes modificar la posición de la rueda mientras haya un llamamiento pendiente de resolución.');
+        return;
+    }
+
+    const select = document.getElementById('manual-next-agent-select');
+    const selectedTip = select?.value;
+    const selectedIndex = agents.findIndex(agent => agent.id === selectedTip && agent.active !== false);
+    if (selectedIndex === -1) {
+        alert('Selecciona un agente habilitado.');
+        return;
+    }
+
+    if (!confirm(`¿Establecer a ${selectedTip} como siguiente agente? Se ajustará el orden de la rueda, pero no se modificarán el historial ni los contadores.`)) {
+        return;
+    }
+
+    const previousAgents = agents.slice();
+    const previousActiveIndex = activeAgentIndex;
+    const previousSkipMode = isSkipMode;
+
+    if (selectedIndex !== 0) {
+        const [selectedAgent] = agents.splice(selectedIndex, 1);
+        agents.unshift(selectedAgent);
+    }
+    activeAgentIndex = 0;
+
+    const saved = await saveState();
+    if (!saved) {
+        agents = previousAgents;
+        activeAgentIndex = previousActiveIndex;
+        isSkipMode = previousSkipMode;
+        await saveState();
+        render();
+        alert('No se pudo guardar el ajuste. Se ha restaurado la posición anterior.');
+        return;
+    }
+
+    render();
+    alert(`${selectedTip} queda establecido como siguiente agente. No se han modificado los contadores ni el historial.`);
+}
+
+
+/* =========================================================
    RENDER PRINCIPAL
 ========================================================= */
 
@@ -2163,6 +2265,7 @@ function render() {
         }
     );
 
+    renderManualNextAgentSelector();
 
    /* -------------------------------------------------------
    HISTORIAL
@@ -2886,7 +2989,14 @@ document.getElementById('call-form').addEventListener('submit', async function(e
         status: 'Pendiente',
         noticeType,
         notes,
-        noticeDatetime
+        noticeDatetime,
+        /* Fotografía de la rueda al hacer el llamamiento. Si se anula,
+           se recuperará exactamente esta posición y este orden. */
+        wheel_state_before: {
+            order: agents.map(agent => agent.id),
+            active_tip: currentAgent.id,
+            skip_mode: Boolean(isSkipMode)
+        }
     };
 
     /* En esta primera fase solo se guarda el llamamiento. La rueda no cambia. */
@@ -3164,7 +3274,67 @@ async function deleteHistoryEntry(id) {
         );
 
     if (item.status === 'Pendiente') {
-        if (!confirm(`¿Anular el llamamiento pendiente de ${item.assigned_tip}? La rueda no cambiará.`)) {
+        if (!confirm(`¿Anular el llamamiento pendiente de ${item.assigned_tip}? El agente llamado volverá a quedar como siguiente si la rueda se había adelantado.`)) {
+            return;
+        }
+
+        /* Guardar estado para poder revertir si falla alguna escritura. */
+        const previousAgents = agents.map(agent => ({ ...agent }));
+        const previousActiveIndex = activeAgentIndex;
+        const previousSkipMode = isSkipMode;
+        const wheelSnapshot = item.wheel_state_before;
+
+        if (wheelSnapshot && Array.isArray(wheelSnapshot.order)) {
+            /* Caso normal de la nueva versión: restauración exacta. */
+            const currentByTip = new Map(agents.map(agent => [agent.id, agent]));
+            const restoredOrder = wheelSnapshot.order
+                .map(tip => currentByTip.get(tip))
+                .filter(Boolean);
+            const restoredTips = new Set(restoredOrder.map(agent => agent.id));
+            const agentsAddedAfterCall = agents.filter(agent => !restoredTips.has(agent.id));
+            agents = [...restoredOrder, ...agentsAddedAfterCall];
+            activeAgentIndex = agents.findIndex(agent => agent.id === wheelSnapshot.active_tip);
+            if (activeAgentIndex === -1) {
+                activeAgentIndex = agents.findIndex(agent => agent.id === item.assigned_tip);
+            }
+            isSkipMode = Boolean(wheelSnapshot.skip_mode);
+        } else {
+            /* Compatibilidad con registros antiguos sin fotografía: el llamamiento
+               pudo haberse adelantado en la versión anterior. Deshacemos ese avance
+               recolocando al agente llamado justo antes del que figura actualmente. */
+            const calledIndex = agents.findIndex(agent => agent.id === item.assigned_tip);
+            if (calledIndex === -1) {
+                alert('No se encuentra el agente llamado en la rueda. No se ha anulado el llamamiento.');
+                return;
+            }
+
+            const activeTipNow = agents[activeAgentIndex]?.id ?? null;
+            if (activeTipNow !== item.assigned_tip) {
+                const [calledAgent] = agents.splice(calledIndex, 1);
+                let insertionIndex = activeTipNow
+                    ? agents.findIndex(agent => agent.id === activeTipNow)
+                    : 0;
+                if (insertionIndex === -1) insertionIndex = 0;
+                agents.splice(insertionIndex, 0, calledAgent);
+            }
+            activeAgentIndex = agents.findIndex(agent => agent.id === item.assigned_tip);
+            if (activeAgentIndex === -1) activeAgentIndex = 0;
+            /* Sin fotografía no se puede deducir con fiabilidad el modo salto anterior. */
+        }
+
+        if (agents[activeAgentIndex]?.active === false) {
+            const nextIndex = findNextActiveIndex(activeAgentIndex);
+            if (nextIndex !== -1) activeAgentIndex = nextIndex;
+        }
+
+        const restoredStateSaved = await saveState();
+        if (!restoredStateSaved) {
+            agents = previousAgents;
+            activeAgentIndex = previousActiveIndex;
+            isSkipMode = previousSkipMode;
+            await saveState();
+            render();
+            alert('No se pudo restaurar la posición de la rueda. El llamamiento sigue pendiente.');
             return;
         }
 
@@ -3175,13 +3345,18 @@ async function deleteHistoryEntry(id) {
 
         if (pendingDeleteError) {
             console.error('Error anulando llamamiento pendiente:', pendingDeleteError);
-            alert('No se pudo anular el llamamiento pendiente.');
+            agents = previousAgents;
+            activeAgentIndex = previousActiveIndex;
+            isSkipMode = previousSkipMode;
+            await saveState();
+            render();
+            alert('No se pudo anular el llamamiento. Se ha recuperado el estado anterior de la rueda.');
             return;
         }
 
         history.splice(index, 1);
         render();
-        alert('Llamamiento anulado. La rueda permanece en la misma posición.');
+        alert(`Llamamiento de ${item.assigned_tip} anulado. ${item.assigned_tip} vuelve a quedar como siguiente agente.`);
         return;
     }
 
