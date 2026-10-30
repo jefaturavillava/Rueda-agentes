@@ -2783,7 +2783,7 @@ function prepareWhatsAppPendingNotification(pending, assignedAgent) {
     const item = normalizeHistoryRecord(pending);
 
     lastWhatsAppAssignedMessage =
-`🔔 LLAMAMIENTO PARA CUBRIR UN SERVICIO
+`🔔 SERVICIO DE RUEDA
 
 Hola ${assignedAgent.id}.
 
@@ -2791,12 +2791,11 @@ Te corresponde el siguiente llamamiento:
 
 📅 Fecha: ${formatDate(item.service_date)}
 🕐 Turno: ${getShortShift(item.shift)}
-📋 Motivo: ${item.reason || 'No indicado'}
 ⏰ Antelación: ${item.notice_type || '—'}
 
-Por favor, confirma a Jefatura si realizas el servicio, si existe un salto justificado o si lo cedes a otro compañero.
+Por favor, confirmame a la mayor brevedad si realizas el servicio, si existe un salto justificado -trabajas en otro turno, tienes V, AP, o L- o si lo cedes a otro compañero.
 
-El llamamiento está registrado, pero la rueda no se modificará hasta que se confirme el resultado.`;
+Gracias.`;
 
     lastWhatsAppNextMessage = '';
     lastWhatsAppSkippedMessage = '';
