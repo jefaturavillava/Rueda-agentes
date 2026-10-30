@@ -2619,6 +2619,16 @@ sortedHistory.forEach(item => {
         </div>
 
 
+        ${item.status === 'Cedido' && item.worker_tip && item.worker_tip !== '—' ? `
+            <button
+                type="button"
+                onclick="openWhatsAppCeded(${Number(item.id)})"
+                class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-3 rounded-lg text-xs">
+                <i class="fa-brands fa-whatsapp mr-2"></i>
+                ENVIAR WHATSAPP AL AGENTE QUE RECIBE (${escapeHtml(item.worker_tip)})
+            </button>
+        ` : ''}
+
         <div class="mt-3 pt-2 border-t flex items-center justify-between">
 
             <span
@@ -2779,11 +2789,30 @@ function openWhatsAppPending(recordId) {
    WHATSAPP
 ========================================================= */
 
+function openWhatsAppCeded(recordId) {
+    const record = history.find(item => Number(item.id) === Number(recordId));
+    if (!record) {
+        alert('No se encuentra el servicio cedido en el historial.');
+        return;
+    }
+
+    const item = normalizeHistoryRecord(record);
+    if (item.status !== 'Cedido' || !item.worker_tip || item.worker_tip === '—') {
+        alert('Este registro no tiene un agente receptor de la cesión.');
+        return;
+    }
+
+    const message = `🔄 SERVICIO CEDIDO\n\nHola ${item.worker_tip}.\n\nEl servicio que correspondía al agente ${item.assigned_tip} te ha sido cedido y te corresponde realizarlo.\n\n📅 Fecha: ${formatDate(item.service_date)}\n🕐 Turno: ${getShortShift(item.shift)}\n📋 Motivo: ${item.reason || 'No indicado'}\n\nLa cesión ha quedado registrada en la aplicación.`;
+    const url = 'https://wa.me/?text=' + encodeURIComponent(message);
+    window.open(url, '_blank');
+}
+
+
 function prepareWhatsAppPendingNotification(pending, assignedAgent) {
     const item = normalizeHistoryRecord(pending);
 
     lastWhatsAppAssignedMessage =
-`🔔 SERVICIO DE RUEDA
+`🔔 LLAMAMIENTO PARA CUBRIR UN SERVICIO
 
 Hola ${assignedAgent.id}.
 
@@ -2791,11 +2820,12 @@ Te corresponde el siguiente llamamiento:
 
 📅 Fecha: ${formatDate(item.service_date)}
 🕐 Turno: ${getShortShift(item.shift)}
+📋 Motivo: ${item.reason || 'No indicado'}
 ⏰ Antelación: ${item.notice_type || '—'}
 
-Por favor, confirmame a la mayor brevedad si realizas el servicio, si existe un salto justificado -trabajas en otro turno, tienes V, AP, o L- o si lo cedes a otro compañero.
+Por favor, confirma a Jefatura si realizas el servicio, si existe un salto justificado o si lo cedes a otro compañero.
 
-Gracias.`;
+El llamamiento está registrado, pero la rueda no se modificará hasta que se confirme el resultado.`;
 
     lastWhatsAppNextMessage = '';
     lastWhatsAppSkippedMessage = '';
@@ -3363,10 +3393,12 @@ async function resolvePendingService(status, targetTip = null, recordId = null) 
 
         render();
 
-        if (otherPending) {
-            alert(`Resolución de ${assignedAgent.id} registrada. Quedan ${getPendingServices().length} llamamiento(s) pendiente(s); la rueda se actualizará cuando se resuelva el último del lote.`);
-        } else {
-            const nextAgent = agents[activeAgentIndex] || null;
+        const nextAgent = agents[activeAgentIndex] || null;
+
+        /* Si se cede un servicio, mostrar inmediatamente las opciones de
+           WhatsApp para el agente que cede y para quien recibe la cesión,
+           aunque todavía queden otros llamamientos pendientes del lote. */
+        if (status === 'Cedido' || !otherPending) {
             prepareWhatsAppNotifications(
                 assignedAgent,
                 nextAgent,
@@ -3377,6 +3409,11 @@ async function resolvePendingService(status, targetTip = null, recordId = null) 
                 status,
                 cededAgent
             );
+        }
+
+        if (otherPending) {
+            alert(`Resolución de ${assignedAgent.id} registrada. Quedan ${getPendingServices().length} llamamiento(s) pendiente(s); la rueda se actualizará cuando se resuelva el último del lote.`);
+        } else {
             alert(`Lote de servicios resuelto. Se ha actualizado la rueda. El siguiente agente es ${nextAgent?.id || '—'}.`);
         }
     } catch (error) {
