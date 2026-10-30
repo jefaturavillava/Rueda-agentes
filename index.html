@@ -632,49 +632,16 @@ async function loginApplication() {
         </div>
         <div>
             <h2 class="text-sm font-bold uppercase tracking-wider text-amber-900">
-                Servicio pendiente de resolución
+                Servicios pendientes de resolución
             </h2>
-            <p class="text-[10px] text-amber-700">El llamamiento está registrado, pero la rueda aún no se ha movido.</p>
+            <p class="text-[10px] text-amber-700">
+                Puedes registrar varios llamamientos. Cada uno reserva un agente distinto; la rueda se actualiza al resolver todos los servicios del lote.
+            </p>
         </div>
     </div>
-
-    <div class="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-2 text-sm">
-        <div class="flex justify-between gap-3"><span class="text-slate-500">Agente llamado</span><strong id="pending-agent"></strong></div>
-        <div class="flex justify-between gap-3"><span class="text-slate-500">Fecha del servicio</span><strong id="pending-date"></strong></div>
-        <div class="flex justify-between gap-3"><span class="text-slate-500">Turno</span><strong id="pending-shift"></strong></div>
-        <div class="flex justify-between gap-3"><span class="text-slate-500">Motivo</span><strong id="pending-reason" class="text-right"></strong></div>
-        <div class="flex justify-between gap-3"><span class="text-slate-500">Aviso</span><strong id="pending-notice" class="text-right"></strong></div>
-    </div>
-
-    <div id="pending-resolution-actions" class="mt-4 space-y-3">
-        <p class="text-xs font-bold text-slate-700">¿Qué ha ocurrido finalmente?</p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button type="button" onclick="resolvePendingService('Realizado')"
-                class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-3 rounded-xl">
-                <i class="fa-solid fa-check mr-1"></i> REALIZADO
-            </button>
-            <button type="button" onclick="resolvePendingService('Salto Justificado')"
-                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-3 rounded-xl">
-                <i class="fa-solid fa-forward mr-1"></i> SALTO JUSTIFICADO
-            </button>
-        </div>
-        <button type="button" onclick="showPendingCessionControls()"
-            class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-3 rounded-xl">
-            <i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> CEDIDO A OTRO AGENTE
-        </button>
-        <div id="pending-cession-controls" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3">
-            <label for="pending-ceded-agent" class="block text-xs font-bold text-slate-700 mb-2">
-                Agente que realizará finalmente el turno
-            </label>
-            <select id="pending-ceded-agent" class="w-full text-sm border border-amber-300 rounded-xl p-3 bg-white"></select>
-            <button type="button" onclick="confirmPendingCession()"
-                class="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl">
-                CONFIRMAR CESIÓN
-            </button>
-        </div>
-    </div>
+    <div id="pending-resolution-list" class="space-y-3"></div>
     <p id="pending-viewer-note" class="hidden mt-3 text-xs text-slate-500">
-        Este llamamiento está pendiente de resolución. Solo un administrador puede registrar el resultado.
+        Los llamamientos están pendientes de resolución. Solo un administrador puede registrar los resultados.
     </p>
 </section>
 
@@ -1502,12 +1469,221 @@ async function saveHistoryRecord(record) {
     return true;
 }
 
+function getPendingServices() {
+    return history
+        .map(normalizeHistoryRecord)
+        .filter(item => item.status === 'Pendiente')
+        .sort((a, b) => Number(a.id) - Number(b.id));
+}
+
 function getPendingService() {
-    return history.find(item => normalizeHistoryRecord(item).status === 'Pendiente') || null;
+    return getPendingServices()[0] || null;
 }
 
 function hasPendingService() {
-    return Boolean(getPendingService());
+    return getPendingServices().length > 0;
+}
+
+function getRecordBatchId(record) {
+    const item = normalizeHistoryRecord(record);
+    const meta = item.wheel_state_before || {};
+    return meta.batch_id ? String(meta.batch_id) : `legacy-${item.id}`;
+}
+
+function getBatchRecords(batchId) {
+    return history
+        .map(normalizeHistoryRecord)
+        .filter(item => getRecordBatchId(item) === String(batchId))
+        .sort((a, b) => {
+            const aSeq = Number(a.wheel_state_before?.batch_seq ?? a.id);
+            const bSeq = Number(b.wheel_state_before?.batch_seq ?? b.id);
+            return aSeq - bSeq;
+        });
+}
+
+function getActivePendingBatchInfo() {
+    const pending = getPendingServices();
+    if (!pending.length) return null;
+
+    const first = pending[0];
+    const meta = first.wheel_state_before || {};
+    const batchId = getRecordBatchId(first);
+    const baseline = {
+        order: Array.isArray(meta.order) && meta.order.length
+            ? meta.order.slice()
+            : agents.map(agent => agent.id),
+        active_tip: meta.active_tip || first.assigned_tip || agents[activeAgentIndex]?.id || null,
+        skip_mode: Boolean(meta.skip_mode),
+        prior_skipped_tips: Array.isArray(meta.prior_skipped_tips) ? meta.prior_skipped_tips.slice() : []
+    };
+
+    const records = meta.batch_id
+        ? getBatchRecords(batchId)
+        : [first];
+
+    return { batch_id: batchId, baseline, records };
+}
+
+function getNextAgentForNewService(batchInfo = getActivePendingBatchInfo()) {
+    if (!batchInfo) {
+        return agents[activeAgentIndex]?.active === false
+            ? agents[findNextActiveIndex(activeAgentIndex)] || null
+            : agents[activeAgentIndex] || null;
+    }
+
+    const reservedTips = new Set(batchInfo.records.map(item => item.assigned_tip));
+    const order = batchInfo.baseline.order || [];
+    let start = order.indexOf(batchInfo.baseline.active_tip);
+    if (start < 0) start = 0;
+    const rotated = order.slice(start).concat(order.slice(0, start));
+
+    for (const tip of rotated) {
+        const agent = agents.find(item => item.id === tip);
+        if (agent && agent.active !== false && !reservedTips.has(agent.id)) {
+            return agent;
+        }
+    }
+    return null;
+}
+
+function getPriorConsecutiveSkippedTips() {
+    const result = [];
+    for (let index = history.length - 1; index >= 0; index--) {
+        const item = normalizeHistoryRecord(history[index]);
+        if (item.status !== 'Salto Justificado') break;
+        result.unshift(item.assigned_tip);
+    }
+    return [...new Set(result)];
+}
+
+async function preparePendingBatchForNewCall() {
+    const pending = getPendingServices();
+    if (!pending.length) {
+        return {
+            batch_id: String(Date.now()),
+            baseline: {
+                order: agents.map(agent => agent.id),
+                active_tip: agents[activeAgentIndex]?.id || null,
+                skip_mode: Boolean(isSkipMode),
+                prior_skipped_tips: isSkipMode ? getPriorConsecutiveSkippedTips() : []
+            },
+            records: [],
+            next_seq: 1
+        };
+    }
+
+    const first = pending[0];
+    let meta = first.wheel_state_before || {};
+    const batchId = getRecordBatchId(first);
+    const baseline = {
+        order: Array.isArray(meta.order) && meta.order.length ? meta.order.slice() : agents.map(agent => agent.id),
+        active_tip: meta.active_tip || first.assigned_tip || agents[activeAgentIndex]?.id || null,
+        skip_mode: Boolean(meta.skip_mode),
+        prior_skipped_tips: Array.isArray(meta.prior_skipped_tips) ? meta.prior_skipped_tips.slice() : []
+    };
+
+    /* Compatibilidad: si queda un llamamiento pendiente de una versión anterior,
+       lo convertimos en el primer elemento de un lote sin alterar su estado. */
+    if (!meta.batch_id) {
+        const migratedMeta = {
+            ...baseline,
+            batch_id: batchId,
+            batch_seq: 1
+        };
+        const migrated = await updateHistoryRecord(first, {
+            status: 'Pendiente',
+            worker_tip: null,
+            worker_name: '',
+            wheel_state_before: migratedMeta
+        });
+        if (!migrated) return null;
+        const index = history.findIndex(item => Number(item.id) === Number(first.id));
+        if (index !== -1) {
+            history[index] = {
+                ...history[index],
+                wheel_state_before: migratedMeta
+            };
+        }
+    }
+
+    const records = getBatchRecords(batchId);
+    const maxSeq = records.reduce((max, item) => Math.max(max, Number(item.wheel_state_before?.batch_seq || 0)), 0);
+    return {
+        batch_id: batchId,
+        baseline,
+        records,
+        next_seq: maxSeq + 1
+    };
+}
+
+function buildBatchWheelResult(batchRecords, baseline) {
+    const byTip = new Map(agents.map(agent => [agent.id, agent]));
+    const order = (baseline.order || [])
+        .map(tip => byTip.get(tip))
+        .filter(Boolean);
+    const included = new Set(order.map(agent => agent.id));
+    agents.forEach(agent => {
+        if (!included.has(agent.id)) order.push(agent);
+    });
+
+    let cursorTip = baseline.active_tip;
+    let skipMode = Boolean(baseline.skip_mode);
+    const skippedInBatch = [];
+    let completedCount = 0;
+
+    for (const item of batchRecords) {
+        const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
+        if (assignedIndex < 0) continue;
+
+        if (item.status === 'Salto Justificado') {
+            if (!skippedInBatch.includes(item.assigned_tip)) skippedInBatch.push(item.assigned_tip);
+            const next = findNextActiveIndexInOrder(order, assignedIndex);
+            cursorTip = next >= 0 ? order[next].id : item.assigned_tip;
+            skipMode = true;
+        } else if (item.status === 'Realizado' || item.status === 'Cedido') {
+            completedCount++;
+            const [moved] = order.splice(assignedIndex, 1);
+            order.push(moved);
+            const nextIndex = assignedIndex >= order.length ? 0 : assignedIndex;
+            cursorTip = order[nextIndex]?.id || order.find(agent => agent.active !== false)?.id || null;
+            skipMode = false;
+        }
+    }
+
+    const priorityTips = [...(baseline.prior_skipped_tips || []), ...skippedInBatch];
+    const uniquePriorityTips = [...new Set(priorityTips)];
+    let nextTip = null;
+
+    /* Si se ha cubierto al menos uno de los servicios del lote, los agentes
+       que quedaron en salto recuperan prioridad al cerrar el lote. Si todos
+       los llamamientos del lote han sido saltos, se continúa avanzando. */
+    if (completedCount > 0) {
+        nextTip = uniquePriorityTips.find(tip => byTip.get(tip)?.active !== false && order.some(agent => agent.id === tip)) || null;
+        skipMode = false;
+    }
+
+    if (!nextTip) {
+        nextTip = cursorTip;
+        if (!nextTip || !order.some(agent => agent.id === nextTip && agent.active !== false)) {
+            nextTip = order.find(agent => agent.active !== false)?.id || null;
+        }
+    }
+
+    let nextIndex = order.findIndex(agent => agent.id === nextTip);
+    if (nextIndex < 0 || order[nextIndex]?.active === false) {
+        nextIndex = order.findIndex(agent => agent.active !== false);
+    }
+
+    return { order, active_index: nextIndex < 0 ? 0 : nextIndex, skip_mode: skipMode };
+}
+
+function findNextActiveIndexInOrder(order, startIndex) {
+    if (!order.length) return -1;
+    for (let step = 1; step <= order.length; step++) {
+        const index = (startIndex + step) % order.length;
+        if (order[index]?.active !== false) return index;
+    }
+    return -1;
 }
 
 async function updateHistoryRecord(record, updates) {
@@ -1985,7 +2161,7 @@ function renderManualNextAgentSelector() {
     const select = document.getElementById('manual-next-agent-select');
     if (!panel || !select) return;
 
-    panel.classList.toggle('hidden', currentUserRole !== 'admin');
+    panel.classList.toggle('hidden', currentUserRole !== 'admin' || hasPendingService());
     select.innerHTML = '';
 
     const currentTip = agents[activeAgentIndex]?.id;
@@ -2082,30 +2258,24 @@ function render() {
         }
     }
 
-    const activeAgent =
-        agents[activeAgentIndex];
+    const pendingBatchInfo = getActivePendingBatchInfo();
+    const displayedAgent = getNextAgentForNewService(pendingBatchInfo);
+    const activeAgent = agents[activeAgentIndex];
 
-    if (!activeAgent) {
-        return;
-    }
-
+    if (!activeAgent && !displayedAgent) return;
 
     /* -------------------------------------------------------
        PRÓXIMO AGENTE
     ------------------------------------------------------- */
 
-    document.getElementById('next-tip').innerText =
-        activeAgent.id;
-
-
-    document.getElementById('next-name').innerText =
-        activeAgent.name;
-
-
-    document.getElementById('next-pos-text').innerText =
-        isSkipMode
-            ? `Puesto ${activeAgentIndex + 1} — Salto`
-            : 'Puesto 1';
+    const pendingCount = getPendingServices().length;
+    document.getElementById('next-tip').innerText = displayedAgent?.id || '—';
+    document.getElementById('next-name').innerText = displayedAgent
+        ? displayedAgent.name
+        : 'Todos los agentes habilitados ya tienen un llamamiento en este lote.';
+    document.getElementById('next-pos-text').innerText = pendingCount
+        ? `${pendingCount} llamamiento${pendingCount === 1 ? '' : 's'} pendiente${pendingCount === 1 ? '' : 's'} · siguiente disponible`
+        : (isSkipMode ? `Puesto ${activeAgentIndex + 1} — Salto` : 'Puesto 1');
 
 
     const card =
@@ -2116,22 +2286,15 @@ function render() {
         document.getElementById('skip-alert');
 
 
-    if (isSkipMode) {
-
-        card.className =
-            'bg-blue-50 border border-blue-200 rounded-xl p-4';
-
-
-        skipAlert.classList.remove('hidden');
-
-    } else {
-
-        card.className =
-            'bg-emerald-50 border border-emerald-200 rounded-xl p-4';
-
-
+    if (pendingCount > 0) {
+        card.className = 'bg-amber-50 border border-amber-200 rounded-xl p-4';
         skipAlert.classList.add('hidden');
-
+    } else if (isSkipMode) {
+        card.className = 'bg-blue-50 border border-blue-200 rounded-xl p-4';
+        skipAlert.classList.remove('hidden');
+    } else {
+        card.className = 'bg-emerald-50 border border-emerald-200 rounded-xl p-4';
+        skipAlert.classList.add('hidden');
     }
 
 
@@ -2151,8 +2314,9 @@ function render() {
     agents.forEach(
         (agent, index) => {
 
-            const isCurrent =
-                index === activeAgentIndex;
+            const isCurrent = pendingCount > 0
+                ? agent.id === displayedAgent?.id
+                : index === activeAgentIndex;
 
 
             const card =
@@ -2201,6 +2365,11 @@ function render() {
                             ${
                                 agent.active === false
                                     ? '<span class="ml-2 text-[9px] font-bold text-red-600 uppercase">INHABILITADO</span>'
+                                    : ''
+                            }
+                            ${
+                                getPendingServices().some(item => item.assigned_tip === agent.id)
+                                    ? '<span class="ml-2 text-[9px] font-bold text-amber-700 uppercase">LLAMAMIENTO PENDIENTE</span>'
                                     : ''
                             }
 
@@ -2484,90 +2653,129 @@ sortedHistory.forEach(item => {
 
 
 /* =========================================================
-   PENDIENTE DE RESOLUCIÓN
+   SERVICIOS PENDIENTES DE RESOLUCIÓN (VARIOS)
 ========================================================= */
 
 function updatePendingServicePanel() {
     const panel = document.getElementById('pending-resolution-panel');
-    const pending = getPendingService();
+    const list = document.getElementById('pending-resolution-list');
+    const viewerNote = document.getElementById('pending-viewer-note');
     const form = document.getElementById('call-form');
+    const pending = getPendingServices();
 
-    if (!pending) {
-        panel.classList.add('hidden');
-        document.getElementById('whatsapp-notifications').classList.add('hidden');
-        if (form) {
-            form.querySelectorAll('input, select, textarea, button').forEach(control => {
-                control.disabled = currentUserRole !== 'admin';
-            });
-            const submitText = form.querySelector('button[type="submit"] span');
-            if (submitText) submitText.textContent = 'REGISTRAR LLAMAMIENTO';
-        }
-        return;
+    if (!panel || !list) return;
+    panel.classList.toggle('hidden', pending.length === 0);
+    list.innerHTML = '';
+    if (pending.length) {
+        document.getElementById('whatsapp-notifications')?.classList.add('hidden');
     }
 
-    const item = normalizeHistoryRecord(pending);
-    const assignedAgent = agents.find(agent => agent.id === item.assigned_tip);
-    panel.classList.remove('hidden');
-
-    document.getElementById('pending-agent').textContent =
-        `${item.assigned_tip || '—'} — ${item.assigned_name || assignedAgent?.name || ''}`;
-    document.getElementById('pending-date').textContent = formatDate(item.service_date);
-    document.getElementById('pending-shift').textContent = getShortShift(item.shift);
-    document.getElementById('pending-reason').textContent = item.reason || 'No indicado';
-    document.getElementById('pending-notice').textContent =
-        `${item.notice_type || '—'} · ${item.notice_datetime ? item.notice_datetime.replace('T', ' ') : 'hora no indicada'}`;
-
     const isAdmin = currentUserRole === 'admin';
-    document.getElementById('pending-resolution-actions').classList.toggle('hidden', !isAdmin);
-    document.getElementById('pending-viewer-note').classList.toggle('hidden', isAdmin);
-
-    const select = document.getElementById('pending-ceded-agent');
-    select.innerHTML = '';
-    agents
-        .filter(agent => agent.id !== item.assigned_tip && agent.active !== false)
-        .forEach(agent => {
-            const option = document.createElement('option');
-            option.value = agent.id;
-            option.textContent = `${agent.id} — ${agent.name}`;
-            select.appendChild(option);
-        });
+    viewerNote?.classList.toggle('hidden', isAdmin || pending.length === 0);
 
     if (form) {
         form.querySelectorAll('input, select, textarea, button').forEach(control => {
-            control.disabled = true;
+            control.disabled = !isAdmin;
         });
         const submitText = form.querySelector('button[type="submit"] span');
-        if (submitText) submitText.textContent = 'HAY UN LLAMAMIENTO PENDIENTE';
+        if (submitText) submitText.textContent = 'REGISTRAR LLAMAMIENTO';
     }
 
-    if (assignedAgent) {
-        prepareWhatsAppPendingNotification(item, assignedAgent);
-    } else {
-        document.getElementById('whatsapp-notifications').classList.add('hidden');
-    }
+    const batchInfo = getActivePendingBatchInfo();
+    const reservedTips = new Set(batchInfo?.records.map(item => item.assigned_tip) || []);
+
+    pending.forEach((record, index) => {
+        const item = normalizeHistoryRecord(record);
+        const assignedAgent = agents.find(agent => agent.id === item.assigned_tip);
+        const card = document.createElement('div');
+        card.className = 'rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-3';
+
+        const cessionOptions = agents
+            .filter(agent => agent.id !== item.assigned_tip && agent.active !== false && !reservedTips.has(agent.id))
+            .map(agent => `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.id)} — ${escapeHtml(agent.name)}</option>`)
+            .join('');
+
+        const id = Number(item.id);
+        card.innerHTML = `
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="text-[10px] font-bold uppercase tracking-wide text-amber-800">Llamamiento ${index + 1} · Pendiente</div>
+                    <div class="text-base font-bold text-slate-900">${escapeHtml(item.assigned_tip)} — ${escapeHtml(item.assigned_name || assignedAgent?.name || '')}</div>
+                    <div class="text-xs text-slate-600">${escapeHtml(formatDate(item.service_date))} · ${escapeHtml(getShortShift(item.shift))}</div>
+                </div>
+                <span class="shrink-0 rounded-lg bg-white border border-amber-200 px-2 py-1 text-[10px] font-bold text-amber-800">${escapeHtml(item.notice_type || '—')}</span>
+            </div>
+            <div class="rounded-lg bg-white/80 border border-amber-100 p-3 space-y-1 text-xs">
+                <div class="flex justify-between gap-2"><span class="text-slate-500">Motivo</span><strong class="text-right">${escapeHtml(item.reason || 'No indicado')}</strong></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-500">Aviso</span><strong class="text-right">${escapeHtml(item.notice_datetime ? item.notice_datetime.replace('T', ' ') : 'No indicado')}</strong></div>
+                ${item.notes ? `<div class="pt-1 border-t border-amber-100"><span class="text-slate-500">Observaciones:</span> ${escapeHtml(item.notes)}</div>` : ''}
+            </div>
+            <button type="button" onclick="openWhatsAppPending(${id})" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-3 rounded-lg text-sm">
+                <i class="fa-brands fa-whatsapp mr-2"></i> ENVIAR LLAMAMIENTO A ${escapeHtml(item.assigned_tip)}
+            </button>
+            ${isAdmin ? `
+                <div class="pt-2 border-t border-amber-200">
+                    <p class="text-xs font-bold text-slate-700 mb-2">¿Qué ha ocurrido finalmente?</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" onclick="resolvePendingService('Realizado', null, ${id})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-2 rounded-lg text-xs">✓ REALIZADO</button>
+                        <button type="button" onclick="resolvePendingService('Salto Justificado', null, ${id})" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-2 rounded-lg text-xs">↷ SALTO JUSTIFICADO</button>
+                    </div>
+                    <div class="mt-2">
+                        <label class="block text-xs font-bold text-slate-700 mb-1" for="pending-ceded-agent-${id}">Si se cede, agente que realiza el servicio</label>
+                        <div class="flex gap-2">
+                            <select id="pending-ceded-agent-${id}" class="min-w-0 flex-1 text-xs border border-amber-300 rounded-lg p-2 bg-white" ${cessionOptions ? '' : 'disabled'}>
+                                ${cessionOptions || '<option value="">No hay agentes disponibles</option>'}
+                            </select>
+                            <button type="button" onclick="confirmPendingCession(${id})" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 rounded-lg text-xs" ${cessionOptions ? '' : 'disabled'}>CEDIDO</button>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+        `;
+        list.appendChild(card);
+    });
+
+    /* El WhatsApp pendiente se muestra dentro de cada tarjeta para que no se
+       pierda el mensaje de un llamamiento al registrar el siguiente. */
 }
 
-function showPendingCessionControls() {
+function showPendingCessionControls(recordId) {
     if (currentUserRole !== 'admin') return;
-    const select = document.getElementById('pending-ceded-agent');
-    if (!select.options.length) {
-        alert('No hay otro agente habilitado al que ceder el servicio.');
+    const select = document.getElementById(`pending-ceded-agent-${Number(recordId)}`);
+    if (!select || !select.value) {
+        alert('Selecciona el agente que realizará el servicio.');
         return;
     }
-    document.getElementById('pending-cession-controls').classList.remove('hidden');
+    confirmPendingCession(recordId);
 }
 
-function confirmPendingCession() {
-    const targetTip = document.getElementById('pending-ceded-agent').value;
+function confirmPendingCession(recordId) {
+    if (currentUserRole !== 'admin') return;
+    const select = document.getElementById(`pending-ceded-agent-${Number(recordId)}`);
+    const targetTip = select?.value;
     if (!targetTip) {
         alert('Selecciona el agente que realizará el servicio.');
         return;
     }
-    resolvePendingService('Cedido', targetTip);
+    resolvePendingService('Cedido', targetTip, Number(recordId));
+}
+
+function openWhatsAppPending(recordId) {
+    const pending = history.find(item => Number(item.id) === Number(recordId));
+    if (!pending || normalizeHistoryRecord(pending).status !== 'Pendiente') return;
+    const item = normalizeHistoryRecord(pending);
+    const agent = agents.find(entry => entry.id === item.assigned_tip);
+    if (!agent) return;
+
+    const message = `🔔 LLAMAMIENTO PARA CUBRIR UN SERVICIO\n\nHola ${agent.id}.\n\nTe corresponde el siguiente llamamiento:\n\n📅 Fecha: ${formatDate(item.service_date)}\n🕐 Turno: ${getShortShift(item.shift)}\n📋 Motivo: ${item.reason || 'No indicado'}\n⏰ Antelación: ${item.notice_type || '—'}\n\nPor favor, confirma a Jefatura si realizas el servicio, si existe un salto justificado o si lo cedes a otro compañero.\n\nEl llamamiento está registrado, pero la rueda no se modificará hasta que se resuelvan todos los llamamientos de este lote.`;
+    const url = 'https://wa.me/?text=' + encodeURIComponent(message);
+    window.open(url, '_blank');
 }
 
 
 /* =========================================================
+   WHATSAPP
+========================================================= *//* =========================================================
    WHATSAPP
 ========================================================= */
 
@@ -2917,7 +3125,7 @@ function getFirstPendingSkippedAgentIndex(excludeRecordId = null) {
 
 
 /* =========================================================
-   REGISTRAR ASIGNACIÓN
+   REGISTRAR LLAMAMIENTOS (ADMITE VARIOS PENDIENTES)
 ========================================================= */
 
 document.getElementById('call-form').addEventListener('submit', async function(e) {
@@ -2925,31 +3133,6 @@ document.getElementById('call-form').addEventListener('submit', async function(e
 
     if (currentUserRole !== 'admin') {
         alert('No tienes permisos para realizar esta acción.');
-        return;
-    }
-
-    if (hasPendingService()) {
-        alert('Ya existe un llamamiento pendiente. Resuélvelo antes de registrar otro.');
-        return;
-    }
-
-    /* Comprobar también en la base de datos por si otro administrador lo ha creado. */
-    const { data: remotePending, error: pendingCheckError } = await supabaseClient
-        .from('history')
-        .select('id')
-        .eq('status', 'Pendiente')
-        .limit(1);
-
-    if (pendingCheckError) {
-        console.error('No se pudo comprobar si existe otro llamamiento pendiente:', pendingCheckError);
-        alert('No se ha podido comprobar si existe otro llamamiento pendiente. No se registrará uno nuevo.');
-        return;
-    }
-
-    if (remotePending && remotePending.length) {
-        await loadHistoryFromSupabase();
-        render();
-        alert('Ya existe un llamamiento pendiente registrado por otro usuario. Resuélvelo antes de registrar otro.');
         return;
     }
 
@@ -2969,13 +3152,37 @@ document.getElementById('call-form').addEventListener('submit', async function(e
         return;
     }
 
-    const currentAgent = agents[activeAgentIndex];
-    if (!currentAgent || currentAgent.active === false) {
-        alert('No hay un agente habilitado en la posición actual de la rueda.');
+    /* Refrescar el historial remoto para no asignar dos veces al mismo agente
+       si hay más de una sesión de Jefatura abierta. */
+    const historyLoaded = await loadHistoryFromSupabase();
+    if (!historyLoaded) {
+        alert('No se ha podido actualizar el historial desde Supabase. No se registrará el llamamiento.');
+        return;
+    }
+
+    const batchInfo = await preparePendingBatchForNewCall();
+    if (!batchInfo) {
+        alert('No se ha podido preparar el lote de llamamientos pendientes. No se ha registrado nada.');
+        render();
+        return;
+    }
+
+    const currentAgent = getNextAgentForNewService(batchInfo);
+    if (!currentAgent) {
+        alert('Todos los agentes habilitados ya tienen un llamamiento reservado en este lote. Resuelve o anula alguno antes de registrar otro.');
+        render();
         return;
     }
 
     const noticeType = calculateNoticeTypeExact(date, shift, noticeDatetime);
+    const wheelSnapshot = {
+        ...batchInfo.baseline,
+        order: batchInfo.baseline.order.slice(),
+        prior_skipped_tips: (batchInfo.baseline.prior_skipped_tips || []).slice(),
+        batch_id: batchInfo.batch_id,
+        batch_seq: batchInfo.next_seq
+    };
+
     const pendingRecord = {
         id: Date.now(),
         date,
@@ -2990,16 +3197,9 @@ document.getElementById('call-form').addEventListener('submit', async function(e
         noticeType,
         notes,
         noticeDatetime,
-        /* Fotografía de la rueda al hacer el llamamiento. Si se anula,
-           se recuperará exactamente esta posición y este orden. */
-        wheel_state_before: {
-            order: agents.map(agent => agent.id),
-            active_tip: currentAgent.id,
-            skip_mode: Boolean(isSkipMode)
-        }
+        wheel_state_before: wheelSnapshot
     };
 
-    /* En esta primera fase solo se guarda el llamamiento. La rueda no cambia. */
     const saved = await saveHistoryRecord(pendingRecord);
     if (!saved) {
         alert('No se pudo registrar el llamamiento en Supabase. La rueda no se ha modificado.');
@@ -3007,30 +3207,31 @@ document.getElementById('call-form').addEventListener('submit', async function(e
     }
 
     history.push(normalizeHistoryRecord(pendingRecord));
-
     document.getElementById('service-reason').value = '';
     document.getElementById('service-notes').value = '';
     setNowNoticeDatetime();
-
     render();
-    alert(`Llamamiento registrado para ${currentAgent.id}. La rueda permanecerá sin cambios hasta que se resuelva.`);
+
+    alert(`Llamamiento registrado para ${currentAgent.id}. Puedes registrar otro servicio: se reservará el siguiente agente disponible sin mover todavía la rueda.`);
 });
 
 
 /* =========================================================
-   RESOLVER LLAMAMIENTO PENDIENTE
+   RESOLVER UN LLAMAMIENTO DEL LOTE
 ========================================================= */
 
-async function resolvePendingService(status, targetTip = null) {
+async function resolvePendingService(status, targetTip = null, recordId = null) {
     if (isResolvingPendingService) return;
     if (currentUserRole !== 'admin') {
         alert('No tienes permisos para realizar esta acción.');
         return;
     }
 
-    const pending = getPendingService();
+    const pending = getPendingServices().find(item =>
+        recordId === null ? true : Number(item.id) === Number(recordId)
+    );
     if (!pending) {
-        alert('No hay ningún llamamiento pendiente de resolución.');
+        alert('No se encuentra ese llamamiento pendiente. Actualiza la aplicación e inténtalo de nuevo.');
         return;
     }
 
@@ -3040,157 +3241,150 @@ async function resolvePendingService(status, targetTip = null) {
     }
 
     const item = normalizeHistoryRecord(pending);
-    const assignedIndex = agents.findIndex(agent => agent.id === item.assigned_tip);
-    if (assignedIndex === -1) {
+    const assignedAgent = agents.find(agent => agent.id === item.assigned_tip);
+    if (!assignedAgent) {
         alert('No se encuentra en la rueda el agente al que se realizó el llamamiento. No se ha modificado nada.');
         return;
     }
 
-    const assignedAgent = agents[assignedIndex];
     let workerAgent = status === 'Salto Justificado' ? null : assignedAgent;
     let cededAgent = null;
 
     if (status === 'Cedido') {
-        cededAgent = agents.find(agent => agent.id === targetTip && agent.active !== false);
-        if (!cededAgent || cededAgent.id === assignedAgent.id) {
-            alert('Selecciona otro agente que esté habilitado en la rueda.');
+        const batchId = getRecordBatchId(item);
+        const batchRecords = getBatchRecords(batchId);
+        const alreadyReservedTips = new Set(batchRecords
+            .filter(record => Number(record.id) !== Number(item.id))
+            .map(record => record.assigned_tip));
+        cededAgent = agents.find(agent =>
+            agent.id === targetTip &&
+            agent.active !== false &&
+            agent.id !== assignedAgent.id &&
+            !alreadyReservedTips.has(agent.id)
+        );
+        if (!cededAgent) {
+            alert('Selecciona otro agente habilitado que no tenga ya un llamamiento pendiente.');
             return;
         }
         workerAgent = cededAgent;
     }
 
-    if (!confirm(`¿Confirmas la resolución «${status}» del llamamiento de ${assignedAgent.id}?`)) {
-        return;
-    }
+    if (!confirm(`¿Confirmas la resolución «${status}» del llamamiento de ${assignedAgent.id}?`)) return;
 
     isResolvingPendingService = true;
-    const actionContainer = document.getElementById('pending-resolution-actions');
-    actionContainer.querySelectorAll('button, select').forEach(control => control.disabled = true);
+    document.querySelectorAll('#pending-resolution-list button, #pending-resolution-list select').forEach(control => control.disabled = true);
 
-    try {
-    /* Guardar el estado exacto de la rueda antes de resolver el llamamiento.
-       Se conserva en el propio registro para poder deshacer esta operación
-       incluso después de cerrar sesión o recargar la aplicación. */
-    const wheelStateBefore = {
-        order: agents.map(agent => agent.id),
-        active_tip: agents[activeAgentIndex]?.id ?? null,
-        skip_mode: Boolean(isSkipMode)
-    };
-
-    /* Guardar una copia local por si falla alguna escritura en Supabase. */
     const previousAgents = agents.map(agent => ({ ...agent }));
     const previousActiveIndex = activeAgentIndex;
     const previousSkipMode = isSkipMode;
+    const batchId = getRecordBatchId(item);
+    const batchRecordsBefore = getBatchRecords(batchId);
+    const baseline = item.wheel_state_before || batchRecordsBefore[0]?.wheel_state_before || {
+        order: agents.map(agent => agent.id),
+        active_tip: agents[activeAgentIndex]?.id || null,
+        skip_mode: Boolean(isSkipMode),
+        prior_skipped_tips: []
+    };
 
-    /* Recuperar el índice real del agente llamado, sin depender de un índice antiguo. */
-    activeAgentIndex = assignedIndex;
-
-    /* Si veníamos de uno o varios saltos, localizar el primero antes de cerrar este registro. */
-    const firstSkippedIndex = previousSkipMode
-        ? getFirstPendingSkippedAgentIndex(item.id)
-        : -1;
-
-    if (status === 'Salto Justificado') {
-        assignedAgent.skipped = (assignedAgent.skipped || 0) + 1;
-        const nextIndex = findNextActiveIndex(assignedIndex);
-        if (nextIndex === -1 || nextIndex === assignedIndex) {
-            agents = previousAgents;
-            activeAgentIndex = previousActiveIndex;
-            isSkipMode = previousSkipMode;
-            alert('No hay otro agente habilitado para continuar la rueda.');
-            return;
-        }
-        activeAgentIndex = nextIndex;
-        isSkipMode = true;
-    } else {
+    try {
+        /* Los contadores se actualizan al registrar la respuesta; el orden de
+           la rueda se mantiene estable hasta cerrar todos los llamamientos del lote. */
         if (status === 'Realizado') {
             assignedAgent.done = (assignedAgent.done || 0) + 1;
+        } else if (status === 'Salto Justificado') {
+            assignedAgent.skipped = (assignedAgent.skipped || 0) + 1;
         } else {
             assignedAgent.swapped = (assignedAgent.swapped || 0) + 1;
             cededAgent.done = (cededAgent.done || 0) + 1;
         }
 
-        const movedAgent = agents.splice(assignedIndex, 1)[0];
-        agents.push(movedAgent);
+        const updatedRecord = {
+            ...item,
+            status,
+            worker_tip: workerAgent ? workerAgent.id : '—',
+            worker_name: workerAgent ? workerAgent.name : '—',
+            workerTip: workerAgent ? workerAgent.id : '—',
+            workerName: workerAgent ? workerAgent.name : '—'
+        };
+        const batchRecordsAfter = batchRecordsBefore.map(record =>
+            Number(record.id) === Number(item.id) ? updatedRecord : record
+        );
+        const otherPending = batchRecordsAfter.some(record => record.status === 'Pendiente');
 
-        if (previousSkipMode && firstSkippedIndex !== -1) {
-            const firstSkippedTip = previousAgents[firstSkippedIndex]?.id;
-            const restoredSkippedIndex = agents.findIndex(agent => agent.id === firstSkippedTip);
-            activeAgentIndex = restoredSkippedIndex !== -1
-                ? restoredSkippedIndex
-                : (assignedIndex >= agents.length ? 0 : assignedIndex);
-        } else {
-            activeAgentIndex = assignedIndex >= agents.length ? 0 : assignedIndex;
+        if (!otherPending) {
+            const wheelResult = buildBatchWheelResult(batchRecordsAfter, baseline);
+            agents = wheelResult.order;
+            activeAgentIndex = wheelResult.active_index;
+            isSkipMode = wheelResult.skip_mode;
         }
-        isSkipMode = false;
-    }
 
-    /* Primero se guarda la nueva rueda; si falla, se restaura la copia anterior. */
-    const stateSaved = await saveState();
-    if (!stateSaved) {
-        agents = previousAgents;
-        activeAgentIndex = previousActiveIndex;
-        isSkipMode = previousSkipMode;
-        await loadAgentsFromSupabase();
-        await loadWheelStateFromSupabase();
-        render();
-        alert('No se pudo guardar la nueva posición de la rueda. El llamamiento sigue pendiente.');
-        return;
-    }
-
-    const historyUpdates = {
-        status,
-        worker_tip: workerAgent ? workerAgent.id : '—',
-        worker_name: workerAgent ? workerAgent.name : '—',
-        wheel_state_before: wheelStateBefore
-    };
-
-    const historySaved = await updateHistoryRecord(item, historyUpdates);
-    if (!historySaved) {
-        /* Deshacer el movimiento si no se pudo cerrar el registro. */
-        agents = previousAgents;
-        activeAgentIndex = previousActiveIndex;
-        isSkipMode = previousSkipMode;
-        const rollbackSaved = await saveState();
-        if (!rollbackSaved) {
+        const stateSaved = await saveState();
+        if (!stateSaved) {
+            agents = previousAgents;
+            activeAgentIndex = previousActiveIndex;
+            isSkipMode = previousSkipMode;
             await loadAgentsFromSupabase();
             await loadWheelStateFromSupabase();
+            render();
+            alert('No se pudo guardar la resolución en la rueda. El llamamiento sigue pendiente.');
+            return;
         }
-        render();
-        alert('No se pudo actualizar el historial. Se ha intentado restaurar la rueda y el llamamiento permanece pendiente.');
-        return;
-    }
 
-    const historyIndex = history.findIndex(record => record.id === item.id);
-    if (historyIndex !== -1) {
-        history[historyIndex] = {
-            ...history[historyIndex],
+        const historySaved = await updateHistoryRecord(item, {
             status,
-            worker_tip: historyUpdates.worker_tip,
-            worker_name: historyUpdates.worker_name,
-            workerTip: historyUpdates.worker_tip,
-            workerName: historyUpdates.worker_name,
-            wheel_state_before: wheelStateBefore
-        };
-    }
+            worker_tip: workerAgent ? workerAgent.id : '—',
+            worker_name: workerAgent ? workerAgent.name : '—',
+            wheel_state_before: item.wheel_state_before
+        });
 
-    render();
+        if (!historySaved) {
+            agents = previousAgents;
+            activeAgentIndex = previousActiveIndex;
+            isSkipMode = previousSkipMode;
+            await saveState();
+            await loadAgentsFromSupabase();
+            await loadWheelStateFromSupabase();
+            await loadHistoryFromSupabase();
+            render();
+            alert('No se pudo actualizar el historial. Se ha restaurado el estado anterior.');
+            return;
+        }
 
-    const nextAgent = agents[activeAgentIndex] || null;
-    prepareWhatsAppNotifications(
-        assignedAgent,
-        nextAgent,
-        item.service_date,
-        item.shift,
-        item.reason,
-        item.notice_type,
-        status,
-        cededAgent
-    );
+        const historyIndex = history.findIndex(record => Number(record.id) === Number(item.id));
+        if (historyIndex !== -1) {
+            history[historyIndex] = {
+                ...history[historyIndex],
+                status,
+                worker_tip: workerAgent ? workerAgent.id : '—',
+                worker_name: workerAgent ? workerAgent.name : '—',
+                workerTip: workerAgent ? workerAgent.id : '—',
+                workerName: workerAgent ? workerAgent.name : '—'
+            };
+        }
 
-    alert(`Llamamiento de ${assignedAgent.id} resuelto: ${status}. La rueda se ha actualizado.`);
+        render();
+
+        if (otherPending) {
+            alert(`Resolución de ${assignedAgent.id} registrada. Quedan ${getPendingServices().length} llamamiento(s) pendiente(s); la rueda se actualizará cuando se resuelva el último del lote.`);
+        } else {
+            const nextAgent = agents[activeAgentIndex] || null;
+            prepareWhatsAppNotifications(
+                assignedAgent,
+                nextAgent,
+                item.service_date,
+                item.shift,
+                item.reason,
+                item.notice_type,
+                status,
+                cededAgent
+            );
+            alert(`Lote de servicios resuelto. Se ha actualizado la rueda. El siguiente agente es ${nextAgent?.id || '—'}.`);
+        }
     } catch (error) {
         console.error('Error inesperado al resolver el llamamiento:', error);
+        agents = previousAgents;
+        activeAgentIndex = previousActiveIndex;
+        isSkipMode = previousSkipMode;
         await loadAgentsFromSupabase();
         await loadWheelStateFromSupabase();
         await loadHistoryFromSupabase();
@@ -3198,10 +3392,7 @@ async function resolvePendingService(status, targetTip = null) {
         alert('Se ha producido un error inesperado. Se han recargado los datos de Supabase; comprueba el estado antes de continuar.');
     } finally {
         isResolvingPendingService = false;
-        if (hasPendingService()) {
-            const actions = document.getElementById('pending-resolution-actions');
-            actions.querySelectorAll('button, select').forEach(control => control.disabled = false);
-        }
+        document.querySelectorAll('#pending-resolution-list button, #pending-resolution-list select').forEach(control => control.disabled = false);
     }
 }
 
@@ -3274,69 +3465,18 @@ async function deleteHistoryEntry(id) {
         );
 
     if (item.status === 'Pendiente') {
-        if (!confirm(`¿Anular el llamamiento pendiente de ${item.assigned_tip}? El agente llamado volverá a quedar como siguiente si la rueda se había adelantado.`)) {
+        if (!confirm(`¿Anular el llamamiento pendiente de ${item.assigned_tip}? El agente quedará liberado y podrá volver a ser reservado en este lote.`)) {
             return;
         }
 
-        /* Guardar estado para poder revertir si falla alguna escritura. */
-        const previousAgents = agents.map(agent => ({ ...agent }));
-        const previousActiveIndex = activeAgentIndex;
-        const previousSkipMode = isSkipMode;
-        const wheelSnapshot = item.wheel_state_before;
-
-        if (wheelSnapshot && Array.isArray(wheelSnapshot.order)) {
-            /* Caso normal de la nueva versión: restauración exacta. */
-            const currentByTip = new Map(agents.map(agent => [agent.id, agent]));
-            const restoredOrder = wheelSnapshot.order
-                .map(tip => currentByTip.get(tip))
-                .filter(Boolean);
-            const restoredTips = new Set(restoredOrder.map(agent => agent.id));
-            const agentsAddedAfterCall = agents.filter(agent => !restoredTips.has(agent.id));
-            agents = [...restoredOrder, ...agentsAddedAfterCall];
-            activeAgentIndex = agents.findIndex(agent => agent.id === wheelSnapshot.active_tip);
-            if (activeAgentIndex === -1) {
-                activeAgentIndex = agents.findIndex(agent => agent.id === item.assigned_tip);
-            }
-            isSkipMode = Boolean(wheelSnapshot.skip_mode);
-        } else {
-            /* Compatibilidad con registros antiguos sin fotografía: el llamamiento
-               pudo haberse adelantado en la versión anterior. Deshacemos ese avance
-               recolocando al agente llamado justo antes del que figura actualmente. */
-            const calledIndex = agents.findIndex(agent => agent.id === item.assigned_tip);
-            if (calledIndex === -1) {
-                alert('No se encuentra el agente llamado en la rueda. No se ha anulado el llamamiento.');
-                return;
-            }
-
-            const activeTipNow = agents[activeAgentIndex]?.id ?? null;
-            if (activeTipNow !== item.assigned_tip) {
-                const [calledAgent] = agents.splice(calledIndex, 1);
-                let insertionIndex = activeTipNow
-                    ? agents.findIndex(agent => agent.id === activeTipNow)
-                    : 0;
-                if (insertionIndex === -1) insertionIndex = 0;
-                agents.splice(insertionIndex, 0, calledAgent);
-            }
-            activeAgentIndex = agents.findIndex(agent => agent.id === item.assigned_tip);
-            if (activeAgentIndex === -1) activeAgentIndex = 0;
-            /* Sin fotografía no se puede deducir con fiabilidad el modo salto anterior. */
-        }
-
-        if (agents[activeAgentIndex]?.active === false) {
-            const nextIndex = findNextActiveIndex(activeAgentIndex);
-            if (nextIndex !== -1) activeAgentIndex = nextIndex;
-        }
-
-        const restoredStateSaved = await saveState();
-        if (!restoredStateSaved) {
-            agents = previousAgents;
-            activeAgentIndex = previousActiveIndex;
-            isSkipMode = previousSkipMode;
-            await saveState();
-            render();
-            alert('No se pudo restaurar la posición de la rueda. El llamamiento sigue pendiente.');
-            return;
-        }
+        const batchId = getRecordBatchId(item);
+        const batchRecordsBefore = getBatchRecords(batchId);
+        const baseline = item.wheel_state_before || batchRecordsBefore[0]?.wheel_state_before || {
+            order: agents.map(agent => agent.id),
+            active_tip: agents[activeAgentIndex]?.id || null,
+            skip_mode: Boolean(isSkipMode),
+            prior_skipped_tips: []
+        };
 
         const { error: pendingDeleteError } = await supabaseClient
             .from('history')
@@ -3345,18 +3485,122 @@ async function deleteHistoryEntry(id) {
 
         if (pendingDeleteError) {
             console.error('Error anulando llamamiento pendiente:', pendingDeleteError);
+            alert('No se pudo anular el llamamiento pendiente.');
+            return;
+        }
+
+        history.splice(index, 1);
+        const remainingBatch = getBatchRecords(batchId);
+        const stillPending = remainingBatch.some(record => record.status === 'Pendiente');
+
+        if (!stillPending) {
+            if (remainingBatch.length) {
+                const wheelResult = buildBatchWheelResult(remainingBatch, baseline);
+                agents = wheelResult.order;
+                activeAgentIndex = wheelResult.active_index;
+                isSkipMode = wheelResult.skip_mode;
+            } else {
+                /* Si era el único servicio del lote, la rueda ya estaba sin mover. */
+                const restoredIndex = agents.findIndex(agent => agent.id === baseline.active_tip);
+                if (restoredIndex !== -1) activeAgentIndex = restoredIndex;
+                isSkipMode = Boolean(baseline.skip_mode);
+            }
+            const stateSaved = await saveState();
+            if (!stateSaved) {
+                await loadAgentsFromSupabase();
+                await loadWheelStateFromSupabase();
+                await loadHistoryFromSupabase();
+                render();
+                alert('El llamamiento se anuló, pero no se pudo guardar el cierre del lote en la rueda. Comprueba el estado antes de continuar.');
+                return;
+            }
+        }
+
+        render();
+        alert(`Llamamiento de ${item.assigned_tip} anulado. La rueda no ha contabilizado este servicio.`);
+        return;
+    }
+
+    /* Los movimientos creados en un lote comparten una fotografía inicial.
+       Al borrar uno de ellos, reconstruimos el lote restante en vez de volver
+       ciegamente a la fotografía inicial completa. */
+    if (item.wheel_state_before?.batch_id) {
+        if (!confirm(`¿Eliminar el último movimiento de ${item.assigned_tip}? Se deshará su contador y se recalculará la rueda con los demás servicios del lote.`)) {
+            return;
+        }
+
+        const assignedAgent = agents.find(agent => agent.id === item.assigned_tip);
+        if (!assignedAgent) {
+            alert('No se ha encontrado el agente del movimiento.');
+            return;
+        }
+
+        const batchId = getRecordBatchId(item);
+        const batchBefore = getBatchRecords(batchId);
+        const baseline = item.wheel_state_before;
+        const remainingBatch = batchBefore.filter(record => Number(record.id) !== Number(item.id));
+        const batchStillPending = remainingBatch.some(record => record.status === 'Pendiente');
+        const previousAgents = agents.map(agent => ({ ...agent }));
+        const previousActiveIndex = activeAgentIndex;
+        const previousSkipMode = isSkipMode;
+
+        if (item.status === 'Realizado') {
+            assignedAgent.done = Math.max(0, (assignedAgent.done || 0) - 1);
+        } else if (item.status === 'Cedido') {
+            assignedAgent.swapped = Math.max(0, (assignedAgent.swapped || 0) - 1);
+            const workerAgent = agents.find(agent => agent.id === item.worker_tip);
+            if (workerAgent) workerAgent.done = Math.max(0, (workerAgent.done || 0) - 1);
+        } else if (item.status === 'Salto Justificado') {
+            assignedAgent.skipped = Math.max(0, (assignedAgent.skipped || 0) - 1);
+        }
+
+        if (!batchStillPending) {
+            if (remainingBatch.length) {
+                const wheelResult = buildBatchWheelResult(remainingBatch, baseline);
+                agents = wheelResult.order;
+                activeAgentIndex = wheelResult.active_index;
+                isSkipMode = wheelResult.skip_mode;
+            } else {
+                const baseOrder = (baseline.order || []).map(tip => previousAgents.find(agent => agent.id === tip)).filter(Boolean);
+                agents = baseOrder.concat(previousAgents.filter(agent => !baseOrder.some(base => base.id === agent.id)));
+                const restoredIndex = agents.findIndex(agent => agent.id === baseline.active_tip);
+                activeAgentIndex = restoredIndex >= 0 ? restoredIndex : 0;
+                isSkipMode = Boolean(baseline.skip_mode);
+            }
+        }
+
+        const stateSaved = await saveState();
+        if (!stateSaved) {
             agents = previousAgents;
             activeAgentIndex = previousActiveIndex;
             isSkipMode = previousSkipMode;
             await saveState();
             render();
-            alert('No se pudo anular el llamamiento. Se ha recuperado el estado anterior de la rueda.');
+            alert('No se pudo guardar la corrección de la rueda. El movimiento no se ha eliminado.');
+            return;
+        }
+
+        const { error: deleteError } = await supabaseClient
+            .from('history')
+            .delete()
+            .eq('id', item.id);
+
+        if (deleteError) {
+            console.error('Error eliminando movimiento del lote:', deleteError);
+            agents = previousAgents;
+            activeAgentIndex = previousActiveIndex;
+            isSkipMode = previousSkipMode;
+            await saveState();
+            render();
+            alert('No se pudo eliminar el movimiento del historial. Se ha restaurado el estado anterior.');
             return;
         }
 
         history.splice(index, 1);
         render();
-        alert(`Llamamiento de ${item.assigned_tip} anulado. ${item.assigned_tip} vuelve a quedar como siguiente agente.`);
+        alert(batchStillPending
+            ? 'Movimiento eliminado. El lote sigue abierto y la rueda permanece reservada hasta resolver los llamamientos restantes.'
+            : 'Movimiento eliminado. Los contadores y la rueda se han recalculado correctamente.');
         return;
     }
 
