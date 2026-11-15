@@ -415,6 +415,31 @@ async function loginApplication() {
 
 
 <!-- =========================================================
+     SITUACIÓN ACTUAL DE LA RUEDA
+========================================================= -->
+
+<section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+
+    <div class="flex items-center gap-2 mb-3">
+        <i class="fa-solid fa-list-ol text-blue-600"></i>
+        <div>
+            <h2 class="text-sm font-bold uppercase tracking-wider">Situación actual de la rueda</h2>
+            <p class="text-[11px] text-slate-500">Orden, siguiente agente y movimientos pendientes</p>
+        </div>
+    </div>
+
+    <div id="wheel-status-summary" class="mb-3 rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-700"></div>
+    <div class="flex flex-wrap gap-2 mb-3 text-[10px] font-bold">
+        <span class="rounded-full bg-amber-100 text-amber-800 px-2.5 py-1">SIGUIENTE</span>
+        <span class="rounded-full bg-blue-100 text-blue-800 px-2.5 py-1">SALTO JUSTIFICADO · PRIORIDAD</span>
+        <span class="rounded-full bg-orange-100 text-orange-800 px-2.5 py-1">LLAMAMIENTO PENDIENTE</span>
+    </div>
+    <div id="wheel-status-list" class="space-y-2" aria-live="polite"></div>
+
+</section>
+
+
+<!-- =========================================================
      FORMULARIO
 ========================================================= -->
 
@@ -2227,6 +2252,78 @@ async function setNextAgentManually() {
    RENDER PRINCIPAL
 ========================================================= */
 
+function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
+    const list = document.getElementById('wheel-status-list');
+    const summary = document.getElementById('wheel-status-summary');
+    if (!list || !summary) return;
+
+    const pending = getPendingServices();
+    const pendingTips = new Set(pending.map(item => item.assigned_tip));
+    let priorityTips = [];
+
+    if (pendingBatchInfo) {
+        priorityTips = [
+            ...(pendingBatchInfo.baseline.prior_skipped_tips || []),
+            ...pendingBatchInfo.records
+                .filter(item => item.status === 'Salto Justificado')
+                .map(item => item.assigned_tip)
+        ];
+    } else if (isSkipMode) {
+        priorityTips = getPriorConsecutiveSkippedTips();
+    }
+
+    const uniquePriorityTips = new Set(priorityTips);
+    const availablePriorityNames = agents
+        .filter(agent => uniquePriorityTips.has(agent.id) && agent.active !== false)
+        .map(agent => agent.id);
+
+    if (pending.length) {
+        summary.innerHTML = '<strong>Hay ' + pending.length + ' llamamiento' +
+            (pending.length === 1 ? '' : 's') +
+            ' pendiente' + (pending.length === 1 ? '' : 's') +
+            ' de resolución.</strong> El orden definitivo se actualizará al resolver todo el lote.';
+    } else if (availablePriorityNames.length) {
+        summary.innerHTML = '<strong>Próximo llamamiento: ' +
+            escapeHtml(displayedAgent?.id || '—') +
+            '.</strong> Tras el siguiente servicio realizado, recuperan prioridad por salto justificado: ' +
+            availablePriorityNames.map(escapeHtml).join(', ') + '.';
+    } else {
+        summary.innerHTML = '<strong>Próximo llamamiento: ' +
+            escapeHtml(displayedAgent?.id || '—') +
+            '.</strong> Se muestra el orden vigente de la rueda.';
+    }
+
+    list.innerHTML = '';
+    agents.forEach((agent, index) => {
+        const isNext = agent.id === displayedAgent?.id;
+        const isPending = pendingTips.has(agent.id);
+        const hasSkipPriority = uniquePriorityTips.has(agent.id) && agent.active !== false;
+        const row = document.createElement('div');
+        row.className = 'rounded-xl border p-3 flex items-center gap-3 ' +
+            (isNext ? 'bg-amber-50 border-amber-300' :
+                hasSkipPriority ? 'bg-blue-50 border-blue-200' :
+                isPending ? 'bg-orange-50 border-orange-200' :
+                agent.active === false ? 'bg-slate-100 border-slate-200 opacity-70' :
+                'bg-white border-slate-200');
+
+        const badges = [];
+        if (isNext) badges.push('<span class="rounded-full bg-amber-500 text-white px-2 py-1 text-[9px] font-bold">SIGUIENTE</span>');
+        if (hasSkipPriority) badges.push('<span class="rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-[9px] font-bold">SALTO JUSTIFICADO · PRIORIDAD</span>');
+        if (isPending) badges.push('<span class="rounded-full bg-orange-100 text-orange-800 px-2 py-1 text-[9px] font-bold">LLAMAMIENTO PENDIENTE</span>');
+        if (agent.active === false) badges.push('<span class="rounded-full bg-slate-200 text-slate-600 px-2 py-1 text-[9px] font-bold">INHABILITADO</span>');
+
+        row.innerHTML =
+            '<span class="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-slate-100 text-slate-700 font-bold text-xs">' +
+                (index + 1) +
+            '</span><div class="min-w-0 flex-1"><div class="font-bold text-sm">' +
+                escapeHtml(agent.id) + ' <span class="font-normal text-slate-500">— ' +
+                escapeHtml(agent.name) + '</span></div><div class="flex flex-wrap gap-1.5 mt-1">' +
+                badges.join('') + '</div></div>';
+        list.appendChild(row);
+    });
+}
+
+
 function render() {
 
     if (agents.length === 0) {
@@ -2269,6 +2366,7 @@ function render() {
     ------------------------------------------------------- */
 
     const pendingCount = getPendingServices().length;
+    renderWheelStatusPanel(displayedAgent, pendingBatchInfo);
     document.getElementById('next-tip').innerText = displayedAgent?.id || '—';
     document.getElementById('next-name').innerText = displayedAgent
         ? displayedAgent.name
