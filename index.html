@@ -1131,25 +1131,6 @@ function compareAgentsByTip(left, right) {
         String(left.id).localeCompare(String(right.id), 'es', { numeric: true });
 }
 
-function normalizeWrappedWheelOrder() {
-    const numericTip = agent => {
-        const match = String(agent?.id ?? '').match(/\d+/);
-        return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
-    };
-    let wrapIndex = -1;
-    for (let index = 1; index < agents.length; index++) {
-        if (numericTip(agents[index]) < numericTip(agents[index - 1])) {
-            wrapIndex = index;
-            break;
-        }
-    }
-    if (wrapIndex < 0) return;
-
-    const head = agents.slice(0, wrapIndex);
-    const wrappedSection = agents.slice(wrapIndex).sort(compareAgentsByTip);
-    agents.splice(0, agents.length, ...head, ...wrappedSection);
-}
-
 async function loadAgentsFromSupabase() {
 
     const { data, error } =
@@ -1201,7 +1182,7 @@ async function loadAgentsFromSupabase() {
 
     }));
 
-    normalizeWrappedWheelOrder();
+    agents.sort(compareAgentsByTip);
     return true;
 }
 
@@ -1634,9 +1615,15 @@ function getActivePendingBatchInfo() {
 
 function getNextAgentForNewService(batchInfo = getActivePendingBatchInfo()) {
     const reservedTips = new Set((batchInfo?.records || []).map(item => item.assigned_tip));
-    const eligible = agent => agent && agent.active !== false && !reservedTips.has(agent.id);
+    const completedTips = getCompletedTipsInCurrentRound();
+    const eligible = agent => agent &&
+        agent.active !== false &&
+        !reservedTips.has(agent.id) &&
+        !completedTips.has(agent.id);
 
-    const pendingTurnAgent = agents.find(agent => eligible(agent) && agent.turn_pending);
+    const pendingTurnAgent = agents.find(agent =>
+        agent.active !== false && agent.turn_pending && !reservedTips.has(agent.id)
+    );
     if (pendingTurnAgent) return pendingTurnAgent;
 
     const priorityTips = batchInfo
@@ -1650,12 +1637,48 @@ function getNextAgentForNewService(batchInfo = getActivePendingBatchInfo()) {
         .find(eligible);
     if (priorityAgent) return priorityAgent;
 
-    const order = agents.slice();
+    const order = agents.slice().sort(compareAgentsByTip);
     let startTip = batchInfo?.baseline.active_tip || agents[activeAgentIndex]?.id;
     let start = order.findIndex(agent => agent.id === startTip);
     if (start < 0) start = 0;
     const rotated = order.slice(start).concat(order.slice(0, start));
     return rotated.find(eligible) || null;
+}
+
+function getCompletedTipsInCurrentRound(excludedRecordIds = new Set()) {
+    const orderedHistory = history
+        .map(normalizeHistoryRecord)
+        .sort((a, b) => Number(a.id) - Number(b.id));
+    const maxTip = Math.max(...agents.map(agent => {
+        const match = String(agent.id ?? '').match(/\d+/);
+        return match ? Number(match[0]) : 0;
+    }), 0);
+    let lastRoundEndIndex = -1;
+
+    orderedHistory.forEach((item, index) => {
+        if (excludedRecordIds.has(String(item.id))) return;
+        if (
+            (item.status === 'Realizado' || item.status === 'Cedido') &&
+            Number(String(item.assigned_tip ?? '').match(/\d+/)?.[0]) === maxTip
+        ) {
+            lastRoundEndIndex = index;
+        }
+    });
+
+    const completedTips = new Set();
+    for (let index = lastRoundEndIndex + 1; index < orderedHistory.length; index++) {
+        const item = orderedHistory[index];
+        if (excludedRecordIds.has(String(item.id))) continue;
+        if (item.status !== 'Realizado' && item.status !== 'Cedido') continue;
+
+        const tipNumber = Number(String(item.assigned_tip ?? '').match(/\d+/)?.[0]);
+        if (tipNumber === maxTip) {
+            completedTips.clear();
+        } else if (item.assigned_tip) {
+            completedTips.add(item.assigned_tip);
+        }
+    }
+    return completedTips;
 }
 
 function getUnresolvedSkipPriorityTips() {
@@ -1734,22 +1757,23 @@ async function preparePendingBatchForNewCall() {
 }
 
 function buildBatchWheelResult(batchRecords, baseline) {
-    const byTip = new Map(agents.map(agent => [agent.id, agent]));
-    const order = (baseline.order || []).map(tip => byTip.get(tip)).filter(Boolean);
-    const included = new Set(order.map(agent => agent.id));
-    agents.forEach(agent => {
-        if (!included.has(agent.id)) order.push(agent);
-    });
-
+    const order = agents.slice().sort(compareAgentsByTip);
+    const batchIds = new Set(batchRecords.map(item => String(item.id)));
+    const completedTips = getCompletedTipsInCurrentRound(batchIds);
+    const skippedTips = new Set(baseline.prior_skipped_tips || []);
     let cursorTip = baseline.active_tip;
     let skipMode = Boolean(baseline.skip_mode);
-    const skippedTips = new Set(baseline.prior_skipped_tips || []);
+    const maxTip = Math.max(...order.map(agent => {
+        const match = String(agent.id ?? '').match(/\d+/);
+        return match ? Number(match[0]) : 0;
+    }), 0);
 
     for (const item of batchRecords.slice().sort((a, b) =>
         Number(a.wheel_state_before?.batch_seq || 0) - Number(b.wheel_state_before?.batch_seq || 0)
     )) {
         const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
         if (assignedIndex < 0) continue;
+
         if (item.status === 'Salto Justificado') {
             skippedTips.add(item.assigned_tip);
             const nextIndex = findNextActiveIndexInOrder(order, assignedIndex);
@@ -1757,25 +1781,49 @@ function buildBatchWheelResult(batchRecords, baseline) {
             skipMode = true;
         } else if (item.status === 'Realizado' || item.status === 'Cedido') {
             skippedTips.delete(item.assigned_tip);
-            const [completedAgent] = order.splice(assignedIndex, 1);
-            completedAgent.turn_pending = false;
-            order.push(completedAgent);
-            const nextIndex = findNextActiveAtOrAfterIndex(order, assignedIndex);
-            cursorTip = nextIndex >= 0 ? order[nextIndex].id : null;
+            if (Number(String(item.assigned_tip ?? '').match(/\d+/)?.[0]) === maxTip) {
+                completedTips.clear();
+            } else {
+                completedTips.add(item.assigned_tip);
+            }
+            const nextIndex = (assignedIndex + 1) % order.length;
+            cursorTip = order[nextIndex]?.id || null;
             skipMode = false;
         }
     }
 
-    const pendingTurnTip = order.find(agent => agent.active !== false && agent.turn_pending)?.id || null;
+    const pendingTurnTip = order.find(agent =>
+        agent.active !== false && agent.turn_pending
+    )?.id || null;
     const priorityTip = [...skippedTips].find(tip =>
         order.some(agent => agent.id === tip && agent.active !== false)
     ) || null;
     let nextTip = pendingTurnTip || priorityTip || cursorTip;
     if (!nextTip || !order.some(agent => agent.id === nextTip && agent.active !== false)) {
         const cursorIndex = order.findIndex(agent => agent.id === nextTip);
-        const nextIndex = findNextActiveAtOrAfterIndex(order, Math.max(0, cursorIndex));
-        nextTip = nextIndex >= 0 ? order[nextIndex].id : null;
+        for (let step = 0; step < order.length; step++) {
+            const candidate = order[(Math.max(0, cursorIndex) + step) % order.length];
+            if (
+                candidate?.active !== false &&
+                !completedTips.has(candidate.id)
+            ) {
+                nextTip = candidate.id;
+                break;
+            }
+        }
     }
+
+    if (completedTips.has(nextTip) || order.find(agent => agent.id === nextTip)?.active === false) {
+        const startIndex = order.findIndex(agent => agent.id === nextTip);
+        for (let step = 1; step <= order.length; step++) {
+            const candidate = order[(Math.max(0, startIndex) + step) % order.length];
+            if (candidate?.active !== false && !completedTips.has(candidate.id)) {
+                nextTip = candidate.id;
+                break;
+            }
+        }
+    }
+
     const activeIndex = order.findIndex(agent => agent.id === nextTip);
     return { order, active_index: activeIndex < 0 ? 0 : activeIndex, skip_mode: skipMode };
 }
@@ -2314,7 +2362,7 @@ async function setNextAgentManually() {
         return;
     }
 
-    if (!confirm(`¿Establecer a ${selectedTip} como siguiente agente? Se ajustará el orden de la rueda, pero no se modificarán el historial ni los contadores.`)) {
+    if (!confirm(`¿Establecer a ${selectedTip} como siguiente agente sin cambiar el orden numérico de la rueda?`)) {
         return;
     }
 
@@ -2322,11 +2370,7 @@ async function setNextAgentManually() {
     const previousActiveIndex = activeAgentIndex;
     const previousSkipMode = isSkipMode;
 
-    if (selectedIndex !== 0) {
-        const [selectedAgent] = agents.splice(selectedIndex, 1);
-        agents.unshift(selectedAgent);
-    }
-    activeAgentIndex = 0;
+    activeAgentIndex = selectedIndex;
 
     const saved = await saveState();
     if (!saved) {
@@ -2340,7 +2384,7 @@ async function setNextAgentManually() {
     }
 
     render();
-    alert(`${selectedTip} queda establecido como siguiente agente. No se han modificado los contadores ni el historial.`);
+    alert(`${selectedTip} queda establecido como siguiente agente. Se mantiene el orden numérico de la rueda.`);
 }
 
 
@@ -2412,7 +2456,7 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
         summary.innerHTML = '<strong>Hay ' + pending.length + ' llamamiento' +
             (pending.length === 1 ? '' : 's') +
             ' pendiente' + (pending.length === 1 ? '' : 's') +
-            ' de resolución.</strong> El orden definitivo se actualizará al resolver todo el lote.';
+            ' de resolución.</strong> El siguiente agente se actualizará al resolver todo el lote.';
     } else if (availablePriorityNames.length) {
         summary.innerHTML = '<strong>Próximo llamamiento: ' +
             escapeHtml(displayedAgent?.id || '—') +
@@ -2433,21 +2477,21 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
     }
 
     list.innerHTML = '';
-    const startIndex = agents.findIndex(agent => agent.id === displayedAgent?.id);
-    const displayedOrder = startIndex < 0
-        ? agents.slice()
-        : agents.slice(startIndex).concat(agents.slice(0, startIndex));
+    const completedTips = getCompletedTipsInCurrentRound();
+    const displayedOrder = agents.slice().sort(compareAgentsByTip);
     displayedOrder.forEach((agent, index) => {
         const isNext = agent.id === displayedAgent?.id;
         const isPending = pendingTips.has(agent.id);
         const hasSkipPriority = uniquePriorityTips.has(agent.id) && agent.active !== false;
         const hasHeldTurn = Boolean(agent.turn_pending);
+        const hasCompletedTurn = completedTips.has(agent.id);
         const row = document.createElement('div');
         row.className = 'rounded-xl border p-3 flex items-center gap-3 ' +
             (isNext ? 'bg-amber-50 border-amber-300' :
                 hasHeldTurn ? 'bg-blue-50 border-blue-200' :
                 hasSkipPriority ? 'bg-blue-50 border-blue-200' :
                 isPending ? 'bg-orange-50 border-orange-200' :
+                hasCompletedTurn ? 'bg-slate-50 border-slate-200' :
                 agent.active === false ? 'bg-slate-100 border-slate-200 opacity-70' :
                 'bg-white border-slate-200');
 
@@ -2455,6 +2499,7 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
         if (isNext) badges.push('<span class="rounded-full bg-amber-500 text-white px-2 py-1 text-[9px] font-bold">SIGUIENTE</span>');
         if (hasSkipPriority) badges.push('<span class="rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-[9px] font-bold">SALTO JUSTIFICADO · PRIORIDAD</span>');
         if (isPending) badges.push('<span class="rounded-full bg-orange-100 text-orange-800 px-2 py-1 text-[9px] font-bold">LLAMAMIENTO PENDIENTE</span>');
+        if (hasCompletedTurn) badges.push('<span class="rounded-full bg-slate-200 text-slate-700 px-2 py-1 text-[9px] font-bold">TURNO REALIZADO EN ESTA VUELTA</span>');
         if (agent.active === false) badges.push('<span class="rounded-full bg-slate-200 text-slate-600 px-2 py-1 text-[9px] font-bold">INHABILITADO</span>');
         if (agent.preserve_turn) badges.push('<span class="rounded-full bg-violet-100 text-violet-800 px-2 py-1 text-[9px] font-bold">AUSENCIA TEMPORAL</span>');
         if (hasHeldTurn) badges.push('<span class="rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-[9px] font-bold">TURNO PENDIENTE AL VOLVER</span>');
