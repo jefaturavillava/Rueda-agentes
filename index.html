@@ -77,6 +77,25 @@ async function probarLogin() {
   console.log('LOGIN:', { data, error });
 }
 
+function applyRolePermissions() {
+    if (currentUserRole === 'admin') return;
+
+    const hideContainingSection = element => {
+        const section = element?.closest('section');
+        if (section) section.style.display = 'none';
+    };
+
+    hideContainingSection(document.getElementById('call-form'));
+    hideContainingSection(document.getElementById('pending-resolution-panel'));
+    hideContainingSection(document.getElementById('whatsapp-notifications'));
+    hideContainingSection(document.getElementById('history-panel'));
+    hideContainingSection(document.getElementById('agents-panel'));
+    hideContainingSection(document.querySelector('button[onclick="resetApplication()"]'));
+
+    const manualPanel = document.getElementById('manual-next-agent-panel');
+    if (manualPanel) manualPanel.style.display = 'none';
+}
+
 async function loginApplication() {
 
     const email =
@@ -125,7 +144,12 @@ async function loginApplication() {
         console.error('No se pudo recuperar el perfil:', profileError);
     }
 
-    currentUserRole = profile?.role || 'viewer';
+    const authenticatedEmail = String(userData.user.email || '').trim().toLowerCase();
+    currentUserRole = authenticatedEmail === 'policia@villava.es'
+        ? 'viewer'
+        : (profile?.role || 'viewer');
+
+    applyRolePermissions();
 
     document.getElementById(
         'login-screen'
@@ -312,7 +336,8 @@ async function loginApplication() {
                 onclick="exportToPDF()"
                 class="bg-amber-500 text-slate-900 font-bold rounded-lg px-3 py-2 shadow active:scale-95 transition">
 
-                <i class="fa-solid fa-file-pdf"></i>
+                <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+                <span class="ml-1">Historial</span>
 
             </button>
 
