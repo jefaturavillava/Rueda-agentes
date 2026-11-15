@@ -1611,7 +1611,7 @@ function getNextAgentForNewService(batchInfo = getActivePendingBatchInfo()) {
         .find(eligible);
     if (priorityAgent) return priorityAgent;
 
-    const order = agents.slice().sort(compareAgentsByTip);
+    const order = agents.slice();
     let startTip = batchInfo?.baseline.active_tip || agents[activeAgentIndex]?.id;
     let start = order.findIndex(agent => agent.id === startTip);
     if (start < 0) start = 0;
