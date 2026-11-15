@@ -418,16 +418,20 @@ async function loginApplication() {
      SITUACIÓN ACTUAL DE LA RUEDA
 ========================================================= -->
 
-<section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+<details class="group bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
 
-    <div class="flex items-center gap-2 mb-3">
-        <i class="fa-solid fa-list-ol text-blue-600"></i>
-        <div>
-            <h2 class="text-sm font-bold uppercase tracking-wider">Situación actual de la rueda</h2>
-            <p class="text-[11px] text-slate-500">Orden, siguiente agente y movimientos pendientes</p>
+    <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-list-ol text-blue-600"></i>
+            <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider">Situación actual de la rueda</h2>
+                <p class="text-[11px] text-slate-500">Orden, siguiente agente y movimientos pendientes</p>
+            </div>
         </div>
-    </div>
+        <i class="fa-solid fa-chevron-down text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true"></i>
+    </summary>
 
+    <div class="mt-4">
     <div id="wheel-status-summary" class="mb-3 rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-700"></div>
     <div class="flex flex-wrap gap-2 mb-3 text-[10px] font-bold">
         <span class="rounded-full bg-amber-100 text-amber-800 px-2.5 py-1">SIGUIENTE</span>
@@ -464,9 +468,9 @@ async function loginApplication() {
             </button>
         </div>
     </div>
+    </div>
 
-
-</section>
+</details>
 
 
 <!-- =========================================================
