@@ -1129,7 +1129,7 @@ async function loadAgentsFromSupabase() {
         return false;
     }
 
-    hasTurnPendingSupport = 'turn_pending' in data[0];
+    hasTurnPendingSupport = 'turn_pending' in data[0] && 'preserve_turn' in data[0];
 
     agents = data.map(agent => ({
 
@@ -1146,6 +1146,8 @@ async function loadAgentsFromSupabase() {
         skipped: agent.skipped ?? 0,
 
         active: agent.active ?? true,
+
+        preserve_turn: agent.preserve_turn ?? false,
 
         turn_pending: agent.turn_pending ?? false
 
@@ -1331,7 +1333,7 @@ async function loadWheelStateFromSupabase() {
     /* Si Supabase apunta a un agente inhabilitado, usar el siguiente habilitado */
     if (activeAgent.active === false) {
 
-        activeAgent.turn_pending = true;
+        if (activeAgent.preserve_turn) activeAgent.turn_pending = true;
         const nextIndex =
             findNextActiveIndex(activeAgentIndex);
 
@@ -1395,6 +1397,7 @@ async function saveState() {
             active: agent.active ?? true
         };
         if (hasTurnPendingSupport) {
+            agentUpdate.preserve_turn = Boolean(agent.preserve_turn);
             agentUpdate.turn_pending = Boolean(agent.turn_pending);
         }
 
@@ -1751,7 +1754,7 @@ function findNextActiveIndexInOrder(order, startIndex) {
     for (let step = 1; step <= order.length; step++) {
         const index = (startIndex + step) % order.length;
         if (order[index]?.active !== false) return index;
-        order[index].turn_pending = true;
+        if (order[index]?.preserve_turn) order[index].turn_pending = true;
     }
     return -1;
 }
@@ -1761,7 +1764,7 @@ function findNextActiveAtOrAfterIndex(order, startIndex) {
     for (let step = 0; step < order.length; step++) {
         const index = (startIndex + step) % order.length;
         if (order[index]?.active !== false) return index;
-        order[index].turn_pending = true;
+        if (order[index]?.preserve_turn) order[index].turn_pending = true;
     }
     return -1;
 }
@@ -2055,8 +2058,11 @@ async function toggleAgentActive(tip) {
     if (!confirm(`¿Confirmas ${actionText} al agente ${tip}${detail}?`)) return;
 
     agent.active = !willDisable;
-    if (willDisable && !preserveTurn) {
-        agent.turn_pending = false;
+    if (willDisable) {
+        agent.preserve_turn = preserveTurn;
+        if (!preserveTurn) agent.turn_pending = false;
+    } else {
+        agent.preserve_turn = false;
     }
 
     if (willDisable && activeAgentIndex >= 0) {
@@ -2443,7 +2449,7 @@ function render() {
     /* Si el agente actual está inhabilitado, avanzar al siguiente habilitado */
     if (agents[activeAgentIndex]?.active === false) {
 
-        agents[activeAgentIndex].turn_pending = true;
+        if (agents[activeAgentIndex].preserve_turn) agents[activeAgentIndex].turn_pending = true;
         const nextIndex =
             findNextActiveIndex(activeAgentIndex);
 
