@@ -1378,11 +1378,6 @@ let lastWhatsAppCededMessage = '';
 let lastWhatsAppCededAgent = null;
 
 async function saveState() {
-    const activeTip = agents[activeAgentIndex]?.id;
-    agents.sort(compareAgentsByTip);
-    const sortedActiveIndex = agents.findIndex(agent => agent.id === activeTip);
-    if (sortedActiveIndex >= 0) activeAgentIndex = sortedActiveIndex;
-
     /*
        Primero se aparcan las posiciones con valores temporales altos para evitar
        colisiones si la columna position tiene una restricción UNIQUE.
@@ -1700,36 +1695,47 @@ async function preparePendingBatchForNewCall() {
 }
 
 function buildBatchWheelResult(batchRecords, baseline) {
-    const order = agents.slice().sort(compareAgentsByTip);
-    const skippedTips = new Set(baseline.prior_skipped_tips || []);
+    const byTip = new Map(agents.map(agent => [agent.id, agent]));
+    const order = (baseline.order || []).map(tip => byTip.get(tip)).filter(Boolean);
+    const included = new Set(order.map(agent => agent.id));
+    agents.forEach(agent => {
+        if (!included.has(agent.id)) order.push(agent);
+    });
+
     let cursorTip = baseline.active_tip;
     let skipMode = Boolean(baseline.skip_mode);
+    const skippedTips = new Set(baseline.prior_skipped_tips || []);
 
-    for (const item of batchRecords.slice().sort((a, b) => Number(a.wheel_state_before?.batch_seq || 0) - Number(b.wheel_state_before?.batch_seq || 0))) {
+    for (const item of batchRecords.slice().sort((a, b) =>
+        Number(a.wheel_state_before?.batch_seq || 0) - Number(b.wheel_state_before?.batch_seq || 0)
+    )) {
+        const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
+        if (assignedIndex < 0) continue;
         if (item.status === 'Salto Justificado') {
             skippedTips.add(item.assigned_tip);
-            const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
             const nextIndex = findNextActiveIndexInOrder(order, assignedIndex);
             cursorTip = nextIndex >= 0 ? order[nextIndex].id : item.assigned_tip;
             skipMode = true;
         } else if (item.status === 'Realizado' || item.status === 'Cedido') {
             skippedTips.delete(item.assigned_tip);
-            const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
-            const nextIndex = findNextActiveAtOrAfterIndex(order, assignedIndex + 1);
+            const [completedAgent] = order.splice(assignedIndex, 1);
+            completedAgent.turn_pending = false;
+            order.push(completedAgent);
+            const nextIndex = findNextActiveAtOrAfterIndex(order, assignedIndex);
             cursorTip = nextIndex >= 0 ? order[nextIndex].id : null;
             skipMode = false;
         }
     }
 
-    const pendingTurnTip = order.find(agent =>
-        agent.active !== false && agent.turn_pending
-    )?.id || null;
+    const pendingTurnTip = order.find(agent => agent.active !== false && agent.turn_pending)?.id || null;
     const priorityTip = [...skippedTips].find(tip =>
         order.some(agent => agent.id === tip && agent.active !== false)
     ) || null;
     let nextTip = pendingTurnTip || priorityTip || cursorTip;
     if (!nextTip || !order.some(agent => agent.id === nextTip && agent.active !== false)) {
-        nextTip = order.find(agent => agent.active !== false)?.id || null;
+        const cursorIndex = order.findIndex(agent => agent.id === nextTip);
+        const nextIndex = findNextActiveAtOrAfterIndex(order, Math.max(0, cursorIndex));
+        nextTip = nextIndex >= 0 ? order[nextIndex].id : null;
     }
     const activeIndex = order.findIndex(agent => agent.id === nextTip);
     return { order, active_index: activeIndex < 0 ? 0 : activeIndex, skip_mode: skipMode };
@@ -2388,16 +2394,10 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
     }
 
     list.innerHTML = '';
-    const displayedOrder = [
-        ...agents.filter(agent => uniquePriorityTips.has(agent.id) && agent.active !== false),
-        ...agents.filter(agent => !uniquePriorityTips.has(agent.id))
-    ].sort((left, right) => {
-        const leftPriority = uniquePriorityTips.has(left.id) && left.active !== false;
-        const rightPriority = uniquePriorityTips.has(right.id) && right.active !== false;
-        return leftPriority === rightPriority
-            ? compareAgentsByTip(left, right)
-            : leftPriority ? -1 : 1;
-    });
+    const startIndex = agents.findIndex(agent => agent.id === displayedAgent?.id);
+    const displayedOrder = startIndex < 0
+        ? agents.slice()
+        : agents.slice(startIndex).concat(agents.slice(0, startIndex));
     displayedOrder.forEach((agent, index) => {
         const isNext = agent.id === displayedAgent?.id;
         const isPending = pendingTips.has(agent.id);
