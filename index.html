@@ -1111,6 +1111,25 @@ function compareAgentsByTip(left, right) {
         String(left.id).localeCompare(String(right.id), 'es', { numeric: true });
 }
 
+function normalizeWrappedWheelOrder() {
+    const numericTip = agent => {
+        const match = String(agent?.id ?? '').match(/\d+/);
+        return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+    };
+    let wrapIndex = -1;
+    for (let index = 1; index < agents.length; index++) {
+        if (numericTip(agents[index]) < numericTip(agents[index - 1])) {
+            wrapIndex = index;
+            break;
+        }
+    }
+    if (wrapIndex < 0) return;
+
+    const head = agents.slice(0, wrapIndex);
+    const wrappedSection = agents.slice(wrapIndex).sort(compareAgentsByTip);
+    agents.splice(0, agents.length, ...head, ...wrappedSection);
+}
+
 async function loadAgentsFromSupabase() {
 
     const { data, error } =
@@ -1162,7 +1181,7 @@ async function loadAgentsFromSupabase() {
 
     }));
 
-    agents.sort(compareAgentsByTip);
+    normalizeWrappedWheelOrder();
     return true;
 }
 
