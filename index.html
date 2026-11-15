@@ -1129,6 +1129,8 @@ async function loadAgentsFromSupabase() {
         return false;
     }
 
+    hasTurnPendingSupport = 'turn_pending' in data[0] && 'preserve_turn' in data[0];
+
     agents = data.map(agent => ({
 
         id: agent.tip,
@@ -1143,7 +1145,11 @@ async function loadAgentsFromSupabase() {
 
         skipped: agent.skipped ?? 0,
 
-        active: agent.active ?? true
+        active: agent.active ?? true,
+
+        preserve_turn: agent.preserve_turn ?? false,
+
+        turn_pending: agent.turn_pending ?? false
 
     }));
 
@@ -1327,6 +1333,7 @@ async function loadWheelStateFromSupabase() {
     /* Si Supabase apunta a un agente inhabilitado, usar el siguiente habilitado */
     if (activeAgent.active === false) {
 
+        if (activeAgent.preserve_turn) activeAgent.turn_pending = true;
         const nextIndex =
             findNextActiveIndex(activeAgentIndex);
 
@@ -1343,7 +1350,7 @@ async function loadWheelStateFromSupabase() {
 
 
 let agents = [];
-
+let hasTurnPendingSupport = false;
 
 let activeAgentIndex = 0;
 
@@ -1381,16 +1388,22 @@ async function saveState() {
     /* Guardar orden definitivo, nombres, contadores y habilitación. */
     for (let index = 0; index < agents.length; index++) {
         const agent = agents[index];
+        const agentUpdate = {
+            position: index + 1,
+            name: agent.name,
+            done: agent.done,
+            swapped: agent.swapped,
+            skipped: agent.skipped,
+            active: agent.active ?? true
+        };
+        if (hasTurnPendingSupport) {
+            agentUpdate.preserve_turn = Boolean(agent.preserve_turn);
+            agentUpdate.turn_pending = Boolean(agent.turn_pending);
+        }
+
         const { error } = await supabaseClient
             .from('agents')
-            .update({
-                position: index + 1,
-                name: agent.name,
-                done: agent.done,
-                swapped: agent.swapped,
-                skipped: agent.skipped,
-                active: agent.active ?? true
-            })
+            .update(agentUpdate)
             .eq('id', agent.supabaseId);
 
         if (error) {
@@ -1571,13 +1584,19 @@ function getActivePendingBatchInfo() {
 }
 
 function getNextAgentForNewService(batchInfo = getActivePendingBatchInfo()) {
+    const reservedTips = new Set((batchInfo?.records || []).map(item => item.assigned_tip));
+    const pendingTurnAgent = agents.find(agent =>
+        agent.active !== false &&
+        agent.turn_pending &&
+        !reservedTips.has(agent.id)
+    );
+    if (pendingTurnAgent) return pendingTurnAgent;
+
     if (!batchInfo) {
         return agents[activeAgentIndex]?.active === false
             ? agents[findNextActiveIndex(activeAgentIndex)] || null
             : agents[activeAgentIndex] || null;
     }
-
-    const reservedTips = new Set(batchInfo.records.map(item => item.assigned_tip));
     const order = batchInfo.baseline.order || [];
     let start = order.indexOf(batchInfo.baseline.active_tip);
     if (start < 0) start = 0;
@@ -1689,27 +1708,34 @@ function buildBatchWheelResult(batchRecords, baseline) {
         } else if (item.status === 'Realizado' || item.status === 'Cedido') {
             completedCount++;
             const [moved] = order.splice(assignedIndex, 1);
+            moved.turn_pending = false;
             order.push(moved);
             const nextIndex = assignedIndex >= order.length ? 0 : assignedIndex;
-            cursorTip = order[nextIndex]?.id || order.find(agent => agent.active !== false)?.id || null;
+            const nextActiveIndex = findNextActiveAtOrAfterIndex(order, nextIndex);
+            cursorTip = nextActiveIndex >= 0 ? order[nextActiveIndex].id : null;
             skipMode = false;
         }
     }
 
     const priorityTips = [...(baseline.prior_skipped_tips || []), ...skippedInBatch];
     const uniquePriorityTips = [...new Set(priorityTips)];
+    const pendingTurnTip = order.find(agent =>
+        agent.active !== false && agent.turn_pending
+    )?.id || null;
     let nextTip = null;
 
     /* Si se ha cubierto al menos uno de los servicios del lote, los agentes
        que quedaron en salto recuperan prioridad al cerrar el lote. Si todos
        los llamamientos del lote han sido saltos, se continúa avanzando. */
     if (completedCount > 0) {
-        nextTip = uniquePriorityTips.find(tip => byTip.get(tip)?.active !== false && order.some(agent => agent.id === tip)) || null;
+        nextTip = pendingTurnTip ||
+            uniquePriorityTips.find(tip => byTip.get(tip)?.active !== false && order.some(agent => agent.id === tip)) ||
+            null;
         skipMode = false;
     }
 
     if (!nextTip) {
-        nextTip = cursorTip;
+        nextTip = pendingTurnTip || cursorTip;
         if (!nextTip || !order.some(agent => agent.id === nextTip && agent.active !== false)) {
             nextTip = order.find(agent => agent.active !== false)?.id || null;
         }
@@ -1728,6 +1754,17 @@ function findNextActiveIndexInOrder(order, startIndex) {
     for (let step = 1; step <= order.length; step++) {
         const index = (startIndex + step) % order.length;
         if (order[index]?.active !== false) return index;
+        if (order[index]?.preserve_turn) order[index].turn_pending = true;
+    }
+    return -1;
+}
+
+function findNextActiveAtOrAfterIndex(order, startIndex) {
+    if (!order.length) return -1;
+    for (let step = 0; step < order.length; step++) {
+        const index = (startIndex + step) % order.length;
+        if (order[index]?.active !== false) return index;
+        if (order[index]?.preserve_turn) order[index].turn_pending = true;
     }
     return -1;
 }
@@ -1975,7 +2012,6 @@ function editAgentName(tip) {
 ========================================================= */
 
 async function toggleAgentActive(tip) {
-
     if (currentUserRole !== 'admin') {
         alert('No tienes permisos para realizar esta acción.');
         return;
@@ -1987,84 +2023,83 @@ async function toggleAgentActive(tip) {
     }
 
     const agent = agents.find(a => a.id === tip);
-
     if (!agent) return;
 
     const willDisable = agent.active !== false;
+    let preserveTurn = false;
 
-    /* No permitir dejar a todos los agentes inhabilitados */
     if (willDisable) {
-
-        const activeAgents = agents.filter(
-            a => a.active !== false
-        );
-
+        const activeAgents = agents.filter(a => a.active !== false);
         if (activeAgents.length <= 1) {
             alert('No se puede inhabilitar al último agente habilitado de la rueda.');
             return;
         }
+
+        const choice = prompt(
+            `¿Cómo quieres inhabilitar a ${tip}?\\n\\n1. Ausencia temporal: conservar su turno\\n2. Retirada de la rueda: no conservar el turno\\n\\nEscribe 1 o 2.`
+        );
+        if (choice === null) return;
+        if (choice.trim() === '1') {
+            preserveTurn = true;
+            if (!hasTurnPendingSupport) {
+                alert('Para conservar turnos, primero ejecuta una vez el SQL de actualización de Supabase incluido en el repositorio.');
+                return;
+            }
+        } else if (choice.trim() !== '2') {
+            alert('Escribe 1 para conservar el turno o 2 para retirarlo.');
+            return;
+        }
     }
 
-    const actionText =
-        willDisable ? 'inhabilitar' : 'habilitar';
-
-    const confirmed = confirm(
-        `¿Seguro que quieres ${actionText} al agente ${tip}?`
-    );
-
-    if (!confirmed) return;
+    const actionText = willDisable ? 'inhabilitar' : 'habilitar';
+    const detail = willDisable
+        ? (preserveTurn ? ' como ausencia temporal, conservando su turno' : ' sin conservar el turno')
+        : (agent.turn_pending ? ' y recuperar su turno pendiente' : '');
+    if (!confirm(`¿Confirmas ${actionText} al agente ${tip}${detail}?`)) return;
 
     agent.active = !willDisable;
+    if (willDisable) {
+        agent.preserve_turn = preserveTurn;
+        if (!preserveTurn) agent.turn_pending = false;
+    } else {
+        agent.preserve_turn = false;
+    }
 
-    /*
-       Si se inhabilita el agente que estaba en el puesto actual,
-       buscamos automáticamente el siguiente agente habilitado.
-    */
     if (willDisable && activeAgentIndex >= 0) {
-
         const currentAgent = agents[activeAgentIndex];
-
         if (currentAgent && currentAgent.id === tip) {
+            if (preserveTurn) agent.turn_pending = true;
 
-            const nextIndex = findNextActiveIndex(
-                activeAgentIndex
-            );
-
+            const nextIndex = findNextActiveIndex(activeAgentIndex);
             if (nextIndex === -1) {
                 agent.active = true;
                 alert('No se ha podido encontrar otro agente habilitado.');
                 return;
             }
-
             activeAgentIndex = nextIndex;
             isSkipMode = false;
         }
     }
 
     const saved = await saveState();
-
     if (!saved) {
-
-        /* Recargar para no dejar la aplicación en un estado distinto de Supabase */
         await loadAgentsFromSupabase();
         await loadWheelStateFromSupabase();
-
         render();
-
-        alert(
-            'No se pudo guardar el cambio en Supabase.'
-        );
-
+        alert('No se pudo guardar el cambio en Supabase.');
         return;
     }
 
     render();
-
-    alert(
-        willDisable
-            ? `Agente ${tip} inhabilitado correctamente.`
-            : `Agente ${tip} habilitado correctamente.`
-    );
+    if (willDisable) {
+        alert(preserveTurn
+            ? `Agente ${tip} inhabilitado temporalmente; recuperará el turno al volver.`
+            : `Agente ${tip} inhabilitado y retirado de la rotación.`);
+    } else {
+        alert(agent.turn_pending
+            ? `Agente ${tip} habilitado y con prioridad para recuperar el turno pendiente.`
+            : `Agente ${tip} habilitado en su posición de la rueda.`);
+    }
 }
 
 
@@ -2080,6 +2115,9 @@ function findNextActiveIndex(startIndex) {
 
         if (agents[index].active !== false) {
             return index;
+        }
+        if (agents[index].preserve_turn) {
+            agents[index].turn_pending = true;
         }
     }
 
@@ -2207,10 +2245,11 @@ function renderManualNextAgentSelector() {
     const select = document.getElementById('manual-next-agent-select');
     if (!panel || !select) return;
 
-    panel.classList.toggle('hidden', currentUserRole !== 'admin' || hasPendingService());
+    const hasReservedTurn = agents.some(agent => agent.preserve_turn || agent.turn_pending);
+    panel.classList.toggle('hidden', currentUserRole !== 'admin' || hasPendingService() || hasReservedTurn);
     select.innerHTML = '';
 
-    const currentTip = agents[activeAgentIndex]?.id;
+    const currentTip = getNextAgentForNewService()?.id || agents[activeAgentIndex]?.id;
     agents.filter(agent => agent.active !== false).forEach(agent => {
         const option = document.createElement('option');
         option.value = agent.id;
@@ -2228,6 +2267,11 @@ async function setNextAgentManually() {
 
     if (hasPendingService()) {
         alert('No puedes modificar la posición de la rueda mientras haya un llamamiento pendiente de resolución.');
+        return;
+    }
+
+    if (agents.some(agent => agent.preserve_turn || agent.turn_pending)) {
+        alert('Hay turnos reservados por ausencias temporales. Recupera esos turnos antes de cambiar manualmente el siguiente agente.');
         return;
     }
 
@@ -2313,6 +2357,8 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
 
     const pending = getPendingServices();
     const pendingTips = new Set(pending.map(item => item.assigned_tip));
+    const heldTurnNames = agents.filter(agent => agent.turn_pending).map(agent => agent.id);
+    const temporaryAbsentNames = agents.filter(agent => agent.preserve_turn).map(agent => agent.id);
     let priorityTips = [];
 
     if (pendingBatchInfo) {
@@ -2346,15 +2392,25 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
             escapeHtml(displayedAgent?.id || '—') +
             '.</strong> Se muestra el orden vigente de la rueda.';
     }
+    if (temporaryAbsentNames.length) {
+        summary.innerHTML += ' Ausencia temporal: ' +
+            temporaryAbsentNames.map(escapeHtml).join(', ') + '.';
+    }
+    if (heldTurnNames.length) {
+        summary.innerHTML += ' Turno pendiente al volver: ' +
+            heldTurnNames.map(escapeHtml).join(', ') + '.';
+    }
 
     list.innerHTML = '';
     agents.forEach((agent, index) => {
         const isNext = agent.id === displayedAgent?.id;
         const isPending = pendingTips.has(agent.id);
         const hasSkipPriority = uniquePriorityTips.has(agent.id) && agent.active !== false;
+        const hasHeldTurn = Boolean(agent.turn_pending);
         const row = document.createElement('div');
         row.className = 'rounded-xl border p-3 flex items-center gap-3 ' +
             (isNext ? 'bg-amber-50 border-amber-300' :
+                hasHeldTurn ? 'bg-blue-50 border-blue-200' :
                 hasSkipPriority ? 'bg-blue-50 border-blue-200' :
                 isPending ? 'bg-orange-50 border-orange-200' :
                 agent.active === false ? 'bg-slate-100 border-slate-200 opacity-70' :
@@ -2365,6 +2421,8 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
         if (hasSkipPriority) badges.push('<span class="rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-[9px] font-bold">SALTO JUSTIFICADO · PRIORIDAD</span>');
         if (isPending) badges.push('<span class="rounded-full bg-orange-100 text-orange-800 px-2 py-1 text-[9px] font-bold">LLAMAMIENTO PENDIENTE</span>');
         if (agent.active === false) badges.push('<span class="rounded-full bg-slate-200 text-slate-600 px-2 py-1 text-[9px] font-bold">INHABILITADO</span>');
+        if (agent.preserve_turn) badges.push('<span class="rounded-full bg-violet-100 text-violet-800 px-2 py-1 text-[9px] font-bold">AUSENCIA TEMPORAL</span>');
+        if (hasHeldTurn) badges.push('<span class="rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-[9px] font-bold">TURNO PENDIENTE AL VOLVER</span>');
 
         row.innerHTML =
             '<span class="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-slate-100 text-slate-700 font-bold text-xs">' +
@@ -2400,6 +2458,7 @@ function render() {
     /* Si el agente actual está inhabilitado, avanzar al siguiente habilitado */
     if (agents[activeAgentIndex]?.active === false) {
 
+        if (agents[activeAgentIndex].preserve_turn) agents[activeAgentIndex].turn_pending = true;
         const nextIndex =
             findNextActiveIndex(activeAgentIndex);
 
@@ -2518,6 +2577,16 @@ function render() {
                             ${
                                 agent.active === false
                                     ? '<span class="ml-2 text-[9px] font-bold text-red-600 uppercase">INHABILITADO</span>'
+                                    : ''
+                            }
+                            ${
+                                agent.preserve_turn
+                                    ? '<span class="ml-2 text-[9px] font-bold text-violet-700 uppercase">AUSENCIA TEMPORAL</span>'
+                                    : ''
+                            }
+                            ${
+                                agent.turn_pending
+                                    ? '<span class="ml-2 text-[9px] font-bold text-blue-700 uppercase">TURNO PENDIENTE AL VOLVER</span>'
                                     : ''
                             }
                             ${
