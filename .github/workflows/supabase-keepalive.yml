@@ -1,0 +1,31 @@
+name: Keep Supabase active
+
+on:
+  schedule:
+    # The intervals are never more than four days; month boundaries may run sooner.
+    - cron: "15 7 1,5,9,13,17,21,25,29 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send a read-only keep-alive query
+        env:
+          SUPABASE_URL: https://vetmnjtnaireheplmgls.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_QCEpa9_TeNFdcalUEo1RUA_Frky8DRE
+        run: |
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
+            --request POST "${SUPABASE_URL}/rest/v1/rpc/keep_alive" \
+            --header "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{}')"
+          if [ "$status" != "200" ]; then
+            echo "Supabase keep-alive returned HTTP $status"
+            exit 1
+          fi
+          echo "Supabase keep-alive succeeded."
