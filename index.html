@@ -283,7 +283,7 @@ async function loginApplication() {
 
 <header class="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
 
-    <div class="px-4 py-3">
+    <div class="max-w-6xl mx-auto px-4 py-3">
 
         <div class="flex items-center justify-between">
 
@@ -338,7 +338,7 @@ async function loginApplication() {
      CONTENIDO PRINCIPAL
 ========================================================= -->
 
-<main class="w-full px-3 py-4 space-y-4">
+<main class="w-full max-w-6xl mx-auto px-3 py-4 space-y-4">
 
 
 <!-- =========================================================
@@ -4367,8 +4367,6 @@ if (!pdfLogoAdded) {
 
                 item.worker_tip || '—',
 
-                item.reason || '-',
-
                 item.notice_type
 
             ];
@@ -4401,8 +4399,6 @@ if (!pdfLogoAdded) {
             '¿Realizó?',
 
             'Realiza finalmente',
-
-            'Motivo',
 
             'Antelación'
 
@@ -4485,16 +4481,12 @@ if (!pdfLogoAdded) {
             },
 
             4: {
-                cellWidth: 28,
+                cellWidth: 38,
                 halign: 'center'
             },
 
             5: {
-                cellWidth: 'auto'
-            },
-
-            6: {
-                cellWidth: 22,
+                cellWidth: 'auto',
                 halign: 'center'
             }
 
