@@ -1102,7 +1102,16 @@ const defaultTips = [
 ========================================================= */
 
 
-async function loadAgentsFromSupabase() {
+async function compareAgentsByTip(left, right) {
+    const numericTip = value => {
+        const match = String(value ?? '').match(/\d+/);
+        return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+    };
+    return numericTip(left.id) - numericTip(right.id) ||
+        String(left.id).localeCompare(String(right.id), 'es', { numeric: true });
+}
+
+function loadAgentsFromSupabase() {
 
     const { data, error } =
         await supabaseClient
@@ -1153,6 +1162,7 @@ async function loadAgentsFromSupabase() {
 
     }));
 
+    agents.sort(compareAgentsByTip);
     return true;
 }
 
@@ -1368,6 +1378,11 @@ let lastWhatsAppCededMessage = '';
 let lastWhatsAppCededAgent = null;
 
 async function saveState() {
+    const activeTip = agents[activeAgentIndex]?.id;
+    agents.sort(compareAgentsByTip);
+    const sortedActiveIndex = agents.findIndex(agent => agent.id === activeTip);
+    if (sortedActiveIndex >= 0) activeAgentIndex = sortedActiveIndex;
+
     /*
        Primero se aparcan las posiciones con valores temporales altos para evitar
        colisiones si la columna position tiene una restricción UNIQUE.
@@ -1585,40 +1600,43 @@ function getActivePendingBatchInfo() {
 
 function getNextAgentForNewService(batchInfo = getActivePendingBatchInfo()) {
     const reservedTips = new Set((batchInfo?.records || []).map(item => item.assigned_tip));
-    const pendingTurnAgent = agents.find(agent =>
-        agent.active !== false &&
-        agent.turn_pending &&
-        !reservedTips.has(agent.id)
-    );
+    const eligible = agent => agent && agent.active !== false && !reservedTips.has(agent.id);
+
+    const pendingTurnAgent = agents.find(agent => eligible(agent) && agent.turn_pending);
     if (pendingTurnAgent) return pendingTurnAgent;
 
-    if (!batchInfo) {
-        return agents[activeAgentIndex]?.active === false
-            ? agents[findNextActiveIndex(activeAgentIndex)] || null
-            : agents[activeAgentIndex] || null;
-    }
-    const order = batchInfo.baseline.order || [];
-    let start = order.indexOf(batchInfo.baseline.active_tip);
+    const priorityTips = batchInfo
+        ? [
+            ...(batchInfo.baseline.prior_skipped_tips || []),
+            ...batchInfo.records.filter(item => item.status === 'Salto Justificado').map(item => item.assigned_tip)
+        ]
+        : getUnresolvedSkipPriorityTips();
+    const priorityAgent = [...new Set(priorityTips)]
+        .map(tip => agents.find(agent => agent.id === tip))
+        .find(eligible);
+    if (priorityAgent) return priorityAgent;
+
+    const order = agents.slice().sort(compareAgentsByTip);
+    let startTip = batchInfo?.baseline.active_tip || agents[activeAgentIndex]?.id;
+    let start = order.findIndex(agent => agent.id === startTip);
     if (start < 0) start = 0;
     const rotated = order.slice(start).concat(order.slice(0, start));
-
-    for (const tip of rotated) {
-        const agent = agents.find(item => item.id === tip);
-        if (agent && agent.active !== false && !reservedTips.has(agent.id)) {
-            return agent;
-        }
-    }
-    return null;
+    return rotated.find(eligible) || null;
 }
 
-function getPriorConsecutiveSkippedTips() {
-    const result = [];
-    for (let index = history.length - 1; index >= 0; index--) {
-        const item = normalizeHistoryRecord(history[index]);
-        if (item.status !== 'Salto Justificado') break;
-        result.unshift(item.assigned_tip);
+function getUnresolvedSkipPriorityTips() {
+    const pending = new Map();
+    for (const raw of history.slice().sort((a, b) => Number(a.id) - Number(b.id))) {
+        const item = normalizeHistoryRecord(raw);
+        if (item.status === 'Salto Justificado') pending.set(item.assigned_tip, true);
+        else if (item.status === 'Realizado' || item.status === 'Cedido') pending.delete(item.assigned_tip);
     }
-    return [...new Set(result)];
+    return [...pending.keys()];
+}
+
+/* Compatibilidad con las llamadas de versiones anteriores. */
+function getPriorConsecutiveSkippedTips() {
+    return getUnresolvedSkipPriorityTips();
 }
 
 async function preparePendingBatchForNewCall() {
@@ -1630,7 +1648,7 @@ async function preparePendingBatchForNewCall() {
                 order: agents.map(agent => agent.id),
                 active_tip: agents[activeAgentIndex]?.id || null,
                 skip_mode: Boolean(isSkipMode),
-                prior_skipped_tips: isSkipMode ? getPriorConsecutiveSkippedTips() : []
+                prior_skipped_tips: getUnresolvedSkipPriorityTips()
             },
             records: [],
             next_seq: 1
@@ -1682,71 +1700,39 @@ async function preparePendingBatchForNewCall() {
 }
 
 function buildBatchWheelResult(batchRecords, baseline) {
-    const byTip = new Map(agents.map(agent => [agent.id, agent]));
-    const order = (baseline.order || [])
-        .map(tip => byTip.get(tip))
-        .filter(Boolean);
-    const included = new Set(order.map(agent => agent.id));
-    agents.forEach(agent => {
-        if (!included.has(agent.id)) order.push(agent);
-    });
-
+    const order = agents.slice().sort(compareAgentsByTip);
+    const skippedTips = new Set(baseline.prior_skipped_tips || []);
     let cursorTip = baseline.active_tip;
     let skipMode = Boolean(baseline.skip_mode);
-    const skippedInBatch = [];
-    let completedCount = 0;
 
-    for (const item of batchRecords) {
-        const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
-        if (assignedIndex < 0) continue;
-
+    for (const item of batchRecords.slice().sort((a, b) => Number(a.wheel_state_before?.batch_seq || 0) - Number(b.wheel_state_before?.batch_seq || 0))) {
         if (item.status === 'Salto Justificado') {
-            if (!skippedInBatch.includes(item.assigned_tip)) skippedInBatch.push(item.assigned_tip);
-            const next = findNextActiveIndexInOrder(order, assignedIndex);
-            cursorTip = next >= 0 ? order[next].id : item.assigned_tip;
+            skippedTips.add(item.assigned_tip);
+            const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
+            const nextIndex = findNextActiveIndexInOrder(order, assignedIndex);
+            cursorTip = nextIndex >= 0 ? order[nextIndex].id : item.assigned_tip;
             skipMode = true;
         } else if (item.status === 'Realizado' || item.status === 'Cedido') {
-            completedCount++;
-            const [moved] = order.splice(assignedIndex, 1);
-            moved.turn_pending = false;
-            order.push(moved);
-            const nextIndex = assignedIndex >= order.length ? 0 : assignedIndex;
-            const nextActiveIndex = findNextActiveAtOrAfterIndex(order, nextIndex);
-            cursorTip = nextActiveIndex >= 0 ? order[nextActiveIndex].id : null;
+            skippedTips.delete(item.assigned_tip);
+            const assignedIndex = order.findIndex(agent => agent.id === item.assigned_tip);
+            const nextIndex = findNextActiveAtOrAfterIndex(order, assignedIndex + 1);
+            cursorTip = nextIndex >= 0 ? order[nextIndex].id : null;
             skipMode = false;
         }
     }
 
-    const priorityTips = [...(baseline.prior_skipped_tips || []), ...skippedInBatch];
-    const uniquePriorityTips = [...new Set(priorityTips)];
     const pendingTurnTip = order.find(agent =>
         agent.active !== false && agent.turn_pending
     )?.id || null;
-    let nextTip = null;
-
-    /* Si se ha cubierto al menos uno de los servicios del lote, los agentes
-       que quedaron en salto recuperan prioridad al cerrar el lote. Si todos
-       los llamamientos del lote han sido saltos, se continúa avanzando. */
-    if (completedCount > 0) {
-        nextTip = pendingTurnTip ||
-            uniquePriorityTips.find(tip => byTip.get(tip)?.active !== false && order.some(agent => agent.id === tip)) ||
-            null;
-        skipMode = false;
+    const priorityTip = [...skippedTips].find(tip =>
+        order.some(agent => agent.id === tip && agent.active !== false)
+    ) || null;
+    let nextTip = pendingTurnTip || priorityTip || cursorTip;
+    if (!nextTip || !order.some(agent => agent.id === nextTip && agent.active !== false)) {
+        nextTip = order.find(agent => agent.active !== false)?.id || null;
     }
-
-    if (!nextTip) {
-        nextTip = pendingTurnTip || cursorTip;
-        if (!nextTip || !order.some(agent => agent.id === nextTip && agent.active !== false)) {
-            nextTip = order.find(agent => agent.active !== false)?.id || null;
-        }
-    }
-
-    let nextIndex = order.findIndex(agent => agent.id === nextTip);
-    if (nextIndex < 0 || order[nextIndex]?.active === false) {
-        nextIndex = order.findIndex(agent => agent.active !== false);
-    }
-
-    return { order, active_index: nextIndex < 0 ? 0 : nextIndex, skip_mode: skipMode };
+    const activeIndex = order.findIndex(agent => agent.id === nextTip);
+    return { order, active_index: activeIndex < 0 ? 0 : activeIndex, skip_mode: skipMode };
 }
 
 function findNextActiveIndexInOrder(order, startIndex) {
@@ -2368,8 +2354,8 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
                 .filter(item => item.status === 'Salto Justificado')
                 .map(item => item.assigned_tip)
         ];
-    } else if (isSkipMode) {
-        priorityTips = getPriorConsecutiveSkippedTips();
+    } else {
+        priorityTips = getUnresolvedSkipPriorityTips();
     }
 
     const uniquePriorityTips = new Set(priorityTips);
@@ -2402,7 +2388,17 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
     }
 
     list.innerHTML = '';
-    agents.forEach((agent, index) => {
+    const displayedOrder = [
+        ...agents.filter(agent => uniquePriorityTips.has(agent.id) && agent.active !== false),
+        ...agents.filter(agent => !uniquePriorityTips.has(agent.id))
+    ].sort((left, right) => {
+        const leftPriority = uniquePriorityTips.has(left.id) && left.active !== false;
+        const rightPriority = uniquePriorityTips.has(right.id) && right.active !== false;
+        return leftPriority === rightPriority
+            ? compareAgentsByTip(left, right)
+            : leftPriority ? -1 : 1;
+    });
+    displayedOrder.forEach((agent, index) => {
         const isNext = agent.id === displayedAgent?.id;
         const isPending = pendingTips.has(agent.id);
         const hasSkipPriority = uniquePriorityTips.has(agent.id) && agent.active !== false;
