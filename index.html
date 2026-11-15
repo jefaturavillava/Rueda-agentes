@@ -1378,6 +1378,11 @@ let lastWhatsAppCededMessage = '';
 let lastWhatsAppCededAgent = null;
 
 async function saveState() {
+    const activeTip = agents[activeAgentIndex]?.id;
+    agents.sort(compareAgentsByTip);
+    const sortedActiveIndex = agents.findIndex(agent => agent.id === activeTip);
+    if (sortedActiveIndex >= 0) activeAgentIndex = sortedActiveIndex;
+
     /*
        Primero se aparcan las posiciones con valores temporales altos para evitar
        colisiones si la columna position tiene una restricción UNIQUE.
@@ -1643,7 +1648,7 @@ async function preparePendingBatchForNewCall() {
                 order: agents.map(agent => agent.id),
                 active_tip: agents[activeAgentIndex]?.id || null,
                 skip_mode: Boolean(isSkipMode),
-                prior_skipped_tips: isSkipMode ? getPriorConsecutiveSkippedTips() : []
+                prior_skipped_tips: getUnresolvedSkipPriorityTips()
             },
             records: [],
             next_seq: 1
@@ -2349,8 +2354,8 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
                 .filter(item => item.status === 'Salto Justificado')
                 .map(item => item.assigned_tip)
         ];
-    } else if (isSkipMode) {
-        priorityTips = getPriorConsecutiveSkippedTips();
+    } else {
+        priorityTips = getUnresolvedSkipPriorityTips();
     }
 
     const uniquePriorityTips = new Set(priorityTips);
@@ -2383,7 +2388,17 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
     }
 
     list.innerHTML = '';
-    agents.forEach((agent, index) => {
+    const displayedOrder = [
+        ...agents.filter(agent => uniquePriorityTips.has(agent.id) && agent.active !== false),
+        ...agents.filter(agent => !uniquePriorityTips.has(agent.id))
+    ].sort((left, right) => {
+        const leftPriority = uniquePriorityTips.has(left.id) && left.active !== false;
+        const rightPriority = uniquePriorityTips.has(right.id) && right.active !== false;
+        return leftPriority === rightPriority
+            ? compareAgentsByTip(left, right)
+            : leftPriority ? -1 : 1;
+    });
+    displayedOrder.forEach((agent, index) => {
         const isNext = agent.id === displayedAgent?.id;
         const isPending = pendingTips.has(agent.id);
         const hasSkipPriority = uniquePriorityTips.has(agent.id) && agent.active !== false;
