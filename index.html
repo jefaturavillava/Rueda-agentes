@@ -5275,22 +5275,16 @@ if (saveNewAgentButton) {
 
 (async function initApplication() {
 
-    /* ---------------------------------------------------------
-       CERRAR SESIÓN ANTERIOR
-    --------------------------------------------------------- */
+    /* Mostrar el acceso sin esperar a la respuesta de Supabase. */
+    const loginScreen = document.getElementById('login-screen');
+    if (loginScreen) loginScreen.style.display = 'flex';
 
-    await supabaseClient.auth.signOut();
-
-
-    /* ---------------------------------------------------------
-       MOSTRAR LOGIN
-    --------------------------------------------------------- */
-
-    const loginScreen =
-        document.getElementById('login-screen');
-
-    loginScreen.style.display =
-        'flex';
+    /* Cerrar cualquier sesión anterior sin bloquear la pantalla. */
+    try {
+        await supabaseClient.auth.signOut();
+    } catch (error) {
+        console.warn('No se pudo cerrar la sesión anterior:', error);
+    }
 
 })();
 
