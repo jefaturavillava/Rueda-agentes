@@ -283,7 +283,7 @@ async function loginApplication() {
 
 <header class="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
 
-    <div class="px-4 py-3">
+    <div class="max-w-6xl mx-auto px-4 py-3">
 
         <div class="flex items-center justify-between">
 
@@ -338,7 +338,7 @@ async function loginApplication() {
      CONTENIDO PRINCIPAL
 ========================================================= -->
 
-<main class="w-full px-3 py-4 space-y-4">
+<main class="w-full max-w-6xl mx-auto px-3 py-4 space-y-4">
 
 
 <!-- =========================================================
@@ -435,6 +435,36 @@ async function loginApplication() {
         <span class="rounded-full bg-orange-100 text-orange-800 px-2.5 py-1">LLAMAMIENTO PENDIENTE</span>
     </div>
     <div id="wheel-status-list" class="space-y-2" aria-live="polite"></div>
+
+    <!-- AJUSTAR EL SIGUIENTE AGENTE (SOLO ADMINISTRACIÓN) -->
+    <div
+        id="manual-next-agent-panel"
+        class="hidden mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+
+        <div class="flex items-center gap-2 mb-2">
+            <i class="fa-solid fa-arrow-rotate-right text-blue-700"></i>
+            <h3 class="text-sm font-bold text-blue-900">Ajustar siguiente agente</h3>
+        </div>
+
+        <p class="text-[11px] text-blue-800 mb-3">
+            Permite corregir manualmente la posición de la rueda sin modificar el historial ni los contadores. El agente elegido pasará al primer puesto y los demás conservarán su orden relativo.
+        </p>
+
+        <div class="space-y-2">
+            <select
+                id="manual-next-agent-select"
+                class="w-full text-sm border border-blue-300 rounded-xl p-3 bg-white">
+            </select>
+
+            <button
+                type="button"
+                onclick="setNextAgentManually()"
+                class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm py-3 px-4 rounded-xl">
+                <i class="fa-solid fa-check mr-2"></i>ESTABLECER COMO SIGUIENTE
+            </button>
+        </div>
+    </div>
+
 
 </section>
 
@@ -534,7 +564,23 @@ async function loginApplication() {
 </div>
 
 
-        <!-- AVISO -->
+        <!-- AGENTE ASIGNADO -->
+
+<div>
+    <label for="service-agent" class="block text-xs font-bold text-slate-600 mb-1.5">
+        Agente asignado
+    </label>
+    <select
+        id="service-agent"
+        required
+        class="w-full text-sm border border-slate-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-amber-500 outline-none">
+    </select>
+    <p class="text-[10px] text-slate-500 mt-1">
+        Por defecto aparece el siguiente de la rueda. Puedes elegir otro agente habilitado.
+    </p>
+</div>
+
+<!-- AVISO -->
 
 <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-4">
 
@@ -876,35 +922,6 @@ async function loginApplication() {
     <div
         id="wheel-mobile-list"
         class="space-y-2">
-    </div>
-
-    <!-- AJUSTAR EL SIGUIENTE AGENTE (SOLO ADMINISTRACIÓN) -->
-    <div
-        id="manual-next-agent-panel"
-        class="hidden mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
-
-        <div class="flex items-center gap-2 mb-2">
-            <i class="fa-solid fa-arrow-rotate-right text-blue-700"></i>
-            <h3 class="text-sm font-bold text-blue-900">Ajustar siguiente agente</h3>
-        </div>
-
-        <p class="text-[11px] text-blue-800 mb-3">
-            Permite corregir manualmente la posición de la rueda sin modificar el historial ni los contadores. El agente elegido pasará al primer puesto y los demás conservarán su orden relativo.
-        </p>
-
-        <div class="space-y-2">
-            <select
-                id="manual-next-agent-select"
-                class="w-full text-sm border border-blue-300 rounded-xl p-3 bg-white">
-            </select>
-
-            <button
-                type="button"
-                onclick="setNextAgentManually()"
-                class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm py-3 px-4 rounded-xl">
-                <i class="fa-solid fa-check mr-2"></i>ESTABLECER COMO SIGUIENTE
-            </button>
-        </div>
     </div>
 
     <!-- BOTÓN AÑADIR AGENTE -->
@@ -2252,6 +2269,39 @@ async function setNextAgentManually() {
    RENDER PRINCIPAL
 ========================================================= */
 
+function renderServiceAgentSelector(displayedAgent, pendingBatchInfo) {
+    const select = document.getElementById('service-agent');
+    if (!select) return;
+
+    const previousTip = select.value;
+    const manualChoice = select.dataset.manualChoice === 'true';
+    const reservedTips = new Set((pendingBatchInfo?.records || []).map(item => item.assigned_tip));
+    const availableAgents = agents.filter(agent =>
+        agent.active !== false && !reservedTips.has(agent.id)
+    );
+
+    select.innerHTML = '';
+    availableAgents.forEach(agent => {
+        const option = document.createElement('option');
+        option.value = agent.id;
+        option.textContent = `${agent.id} — ${agent.name}`;
+        select.appendChild(option);
+    });
+
+    const preferredTip = manualChoice ? previousTip : displayedAgent?.id;
+    const preferredAvailable = availableAgents.some(agent => agent.id === preferredTip);
+    select.value = preferredAvailable
+        ? preferredTip
+        : (displayedAgent && availableAgents.some(agent => agent.id === displayedAgent.id)
+            ? displayedAgent.id
+            : availableAgents[0]?.id || '');
+    select.dataset.manualChoice = preferredAvailable && manualChoice ? 'true' : 'false';
+    select.onchange = () => {
+        select.dataset.manualChoice = 'true';
+    };
+}
+
+
 function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
     const list = document.getElementById('wheel-status-list');
     const summary = document.getElementById('wheel-status-summary');
@@ -2357,6 +2407,7 @@ function render() {
 
     const pendingBatchInfo = getActivePendingBatchInfo();
     const displayedAgent = getNextAgentForNewService(pendingBatchInfo);
+    renderServiceAgentSelector(displayedAgent, pendingBatchInfo);
     const activeAgent = agents[activeAgentIndex];
 
     if (!activeAgent && !displayedAgent) return;
@@ -3294,9 +3345,22 @@ document.getElementById('call-form').addEventListener('submit', async function(e
         return;
     }
 
-    const currentAgent = getNextAgentForNewService(batchInfo);
-    if (!currentAgent) {
+    const nextAgent = getNextAgentForNewService(batchInfo);
+    if (!nextAgent) {
         alert('Todos los agentes habilitados ya tienen un llamamiento reservado en este lote. Resuelve o anula alguno antes de registrar otro.');
+        render();
+        return;
+    }
+
+    const selectedTip = document.getElementById('service-agent')?.value;
+    const reservedTips = new Set(batchInfo.records.map(item => item.assigned_tip));
+    const assignedAgent = agents.find(agent =>
+        agent.id === selectedTip &&
+        agent.active !== false &&
+        !reservedTips.has(agent.id)
+    );
+    if (!assignedAgent) {
+        alert('Selecciona un agente habilitado que no tenga otro llamamiento reservado.');
         render();
         return;
     }
@@ -3315,8 +3379,8 @@ document.getElementById('call-form').addEventListener('submit', async function(e
         date,
         serviceTime: getShiftStartTime(shift),
         shift,
-        assignedTip: currentAgent.id,
-        assignedName: currentAgent.name,
+        assignedTip: assignedAgent.id,
+        assignedName: assignedAgent.name,
         workerTip: null,
         workerName: '',
         reason,
@@ -3336,10 +3400,11 @@ document.getElementById('call-form').addEventListener('submit', async function(e
     history.push(normalizeHistoryRecord(pendingRecord));
     document.getElementById('service-reason').value = '';
     document.getElementById('service-notes').value = '';
+    document.getElementById('service-agent').dataset.manualChoice = 'false';
     setNowNoticeDatetime();
     render();
 
-    alert(`Llamamiento registrado para ${currentAgent.id}. Puedes registrar otro servicio: se reservará el siguiente agente disponible sin mover todavía la rueda.`);
+    alert(`Llamamiento registrado para ${assignedAgent.id}. Puedes registrar otro servicio: se reservará el siguiente agente disponible sin mover todavía la rueda.`);
 });
 
 
@@ -4367,8 +4432,6 @@ if (!pdfLogoAdded) {
 
                 item.worker_tip || '—',
 
-                item.reason || '-',
-
                 item.notice_type
 
             ];
@@ -4401,8 +4464,6 @@ if (!pdfLogoAdded) {
             '¿Realizó?',
 
             'Realiza finalmente',
-
-            'Motivo',
 
             'Antelación'
 
@@ -4485,16 +4546,12 @@ if (!pdfLogoAdded) {
             },
 
             4: {
-                cellWidth: 28,
+                cellWidth: 38,
                 halign: 'center'
             },
 
             5: {
-                cellWidth: 'auto'
-            },
-
-            6: {
-                cellWidth: 22,
+                cellWidth: 'auto',
                 halign: 'center'
             }
 
