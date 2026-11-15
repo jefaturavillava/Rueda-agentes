@@ -1102,7 +1102,7 @@ const defaultTips = [
 ========================================================= */
 
 
-async function compareAgentsByTip(left, right) {
+function compareAgentsByTip(left, right) {
     const numericTip = value => {
         const match = String(value ?? '').match(/\d+/);
         return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
@@ -1111,7 +1111,7 @@ async function compareAgentsByTip(left, right) {
         String(left.id).localeCompare(String(right.id), 'es', { numeric: true });
 }
 
-function loadAgentsFromSupabase() {
+async function loadAgentsFromSupabase() {
 
     const { data, error } =
         await supabaseClient
