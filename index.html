@@ -2116,6 +2116,9 @@ function findNextActiveIndex(startIndex) {
         if (agents[index].active !== false) {
             return index;
         }
+        if (agents[index].preserve_turn) {
+            agents[index].turn_pending = true;
+        }
     }
 
     return -1;
@@ -2242,8 +2245,8 @@ function renderManualNextAgentSelector() {
     const select = document.getElementById('manual-next-agent-select');
     if (!panel || !select) return;
 
-    const hasAvailableHeldTurn = agents.some(agent => agent.active !== false && agent.turn_pending);
-    panel.classList.toggle('hidden', currentUserRole !== 'admin' || hasPendingService() || hasAvailableHeldTurn);
+    const hasReservedTurn = agents.some(agent => agent.preserve_turn || agent.turn_pending);
+    panel.classList.toggle('hidden', currentUserRole !== 'admin' || hasPendingService() || hasReservedTurn);
     select.innerHTML = '';
 
     const currentTip = getNextAgentForNewService()?.id || agents[activeAgentIndex]?.id;
@@ -2267,8 +2270,8 @@ async function setNextAgentManually() {
         return;
     }
 
-    if (agents.some(agent => agent.active !== false && agent.turn_pending)) {
-        alert('Hay turnos pendientes por ausencias temporales. Recupera esos turnos antes de cambiar manualmente el siguiente agente.');
+    if (agents.some(agent => agent.preserve_turn || agent.turn_pending)) {
+        alert('Hay turnos reservados por ausencias temporales. Recupera esos turnos antes de cambiar manualmente el siguiente agente.');
         return;
     }
 
@@ -2355,6 +2358,7 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
     const pending = getPendingServices();
     const pendingTips = new Set(pending.map(item => item.assigned_tip));
     const heldTurnNames = agents.filter(agent => agent.turn_pending).map(agent => agent.id);
+    const temporaryAbsentNames = agents.filter(agent => agent.preserve_turn).map(agent => agent.id);
     let priorityTips = [];
 
     if (pendingBatchInfo) {
@@ -2388,8 +2392,12 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
             escapeHtml(displayedAgent?.id || '—') +
             '.</strong> Se muestra el orden vigente de la rueda.';
     }
+    if (temporaryAbsentNames.length) {
+        summary.innerHTML += ' Ausencia temporal: ' +
+            temporaryAbsentNames.map(escapeHtml).join(', ') + '.';
+    }
     if (heldTurnNames.length) {
-        summary.innerHTML += ' Turno pendiente por ausencia temporal: ' +
+        summary.innerHTML += ' Turno pendiente al volver: ' +
             heldTurnNames.map(escapeHtml).join(', ') + '.';
     }
 
@@ -2413,6 +2421,7 @@ function renderWheelStatusPanel(displayedAgent, pendingBatchInfo) {
         if (hasSkipPriority) badges.push('<span class="rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-[9px] font-bold">SALTO JUSTIFICADO · PRIORIDAD</span>');
         if (isPending) badges.push('<span class="rounded-full bg-orange-100 text-orange-800 px-2 py-1 text-[9px] font-bold">LLAMAMIENTO PENDIENTE</span>');
         if (agent.active === false) badges.push('<span class="rounded-full bg-slate-200 text-slate-600 px-2 py-1 text-[9px] font-bold">INHABILITADO</span>');
+        if (agent.preserve_turn) badges.push('<span class="rounded-full bg-violet-100 text-violet-800 px-2 py-1 text-[9px] font-bold">AUSENCIA TEMPORAL</span>');
         if (hasHeldTurn) badges.push('<span class="rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-[9px] font-bold">TURNO PENDIENTE AL VOLVER</span>');
 
         row.innerHTML =
@@ -2568,6 +2577,16 @@ function render() {
                             ${
                                 agent.active === false
                                     ? '<span class="ml-2 text-[9px] font-bold text-red-600 uppercase">INHABILITADO</span>'
+                                    : ''
+                            }
+                            ${
+                                agent.preserve_turn
+                                    ? '<span class="ml-2 text-[9px] font-bold text-violet-700 uppercase">AUSENCIA TEMPORAL</span>'
+                                    : ''
+                            }
+                            ${
+                                agent.turn_pending
+                                    ? '<span class="ml-2 text-[9px] font-bold text-blue-700 uppercase">TURNO PENDIENTE AL VOLVER</span>'
                                     : ''
                             }
                             ${
